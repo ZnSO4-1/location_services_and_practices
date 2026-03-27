@@ -1,0 +1,7 @@
+folium>=0.15
+geopandas>=0.14
+networkx>=3.2,<4
+numpy>=1.24,<2
+pandas>=2.0,<3
+pyrosm>=0.6
+shapely>=2.0,<3

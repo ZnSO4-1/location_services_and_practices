@@ -1,0 +1,10 @@
+﻿case_name,HMM,trendHMM
+noise_0m,0.84,1.0
+noise_10m,0.96,1.0
+noise_20m,0.96,1.0
+noise_5m,0.92,1.0
+raw,0.84,1.0
+step_1,0.84,1.0
+step_2,0.88,1.0
+step_3,0.88,0.96
+step_5,0.84,0.92

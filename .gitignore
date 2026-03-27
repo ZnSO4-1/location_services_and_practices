@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual env
+.venv/
+venv/
+
+# IDE / system
+.vscode/
+.DS_Store
+
+# Private assets (not open source)
+video_private/
+
+# Large or regenerable data
+data/raw/giow/reference_result.nav
+data/processed/gps_giow_raw.csv
+
+# Temporary outputs
+tmp_visualization/
+cache/

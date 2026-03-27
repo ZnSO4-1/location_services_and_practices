@@ -1,0 +1,1580 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>基于 HMM 的 GPS 轨迹地图匹配复现与实验分析</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --accent: #2563eb;
+      --accent-soft: #dbeafe;
+      --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+      --maxw: 980px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Noto Sans SC", "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+      color: var(--text);
+      background: linear-gradient(180deg, #f8fbff 0%, #f6f8fb 100%);
+      line-height: 1.75;
+    }
+
+    .wrap {
+      width: min(var(--maxw), calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .hero {
+      padding: 56px 0 28px;
+    }
+
+    .hero-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 40px 34px;
+      box-shadow: var(--shadow);
+    }
+
+    .eyebrow-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .eyebrow {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 0;
+    }
+
+    h1 {
+      font-size: clamp(30px, 4vw, 44px);
+      line-height: 1.2;
+      margin: 0 0 14px;
+    }
+
+    .subtitle {
+      font-size: 18px;
+      color: var(--muted);
+      margin: 0 0 18px;
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .meta-item {
+      background: #f9fafb;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px 16px;
+      font-size: 14px;
+    }
+
+    .meta-item strong {
+      display: block;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+
+    .toc {
+      margin: 8px 0 18px;
+    }
+
+    .toc-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 24px 26px;
+      box-shadow: var(--shadow);
+    }
+
+    .toc-title {
+      margin: 0 0 14px;
+      font-size: 22px;
+      line-height: 1.3;
+    }
+
+    .toc-list {
+      margin: 0;
+      padding-left: 0;
+      list-style: none;
+    }
+
+    .toc-list > li + li {
+      margin-top: 8px;
+    }
+
+    .toc-sublist {
+      margin: 8px 0 0 0;
+      padding-left: 28px;
+      list-style: none;
+    }
+
+    .toc-sublist li + li {
+      margin-top: 6px;
+    }
+
+    .toc-item {
+      padding: 0;
+      font-size: 16px;
+      line-height: 1.7;
+    }
+
+    .toc-subitem {
+      font-size: 15px;
+      line-height: 1.7;
+      color: var(--muted);
+    }
+
+    .toc a {
+      display: inline-block;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .toc a:hover {
+      color: var(--accent);
+    }
+
+    main {
+      padding: 12px 0 60px;
+    }
+
+    section {
+      margin: 22px 0;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 28px 26px;
+      box-shadow: var(--shadow);
+    }
+
+    h2 {
+      margin: 0 0 18px;
+      font-size: 26px;
+      line-height: 1.3;
+    }
+
+    h3 {
+      margin: 22px 0 10px;
+      font-size: 19px;
+    }
+
+    p {
+      margin: 10px 0;
+      text-indent: 2em;
+    }
+
+    #refs p,
+    #refs li,
+    .caption,
+    .toc p,
+    .toc li,
+    th,
+    td {
+      text-indent: 0;
+    }
+
+    ul {
+      margin: 10px 0 10px 20px;
+      padding: 0;
+    }
+
+    li + li {
+      margin-top: 6px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .note {
+      border-left: 4px solid var(--accent);
+      background: #f8fbff;
+      border-radius: 14px;
+      padding: 14px 16px;
+      color: #334155;
+      margin: 16px 0;
+    }
+
+    .code-like {
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 16px;
+      padding: 16px;
+      overflow-x: auto;
+      font-family: "Consolas", "Menlo", monospace;
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 14px;
+      font-size: 15px;
+      overflow: hidden;
+      border-radius: 16px;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 12px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f9fafb;
+      font-weight: 700;
+    }
+
+    .placeholder {
+      border: 2px dashed #cbd5e1;
+      border-radius: 18px;
+      padding: 18px;
+      background: #fafcff;
+      color: var(--muted);
+      margin-top: 14px;
+    }
+
+    .image-frame {
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .image-frame img {
+      display: block;
+      max-width: 100%;
+      width: auto;
+      height: auto;
+      max-height: min(65vh, 560px);
+      margin: 0 auto;
+      padding: 14px;
+      box-sizing: border-box;
+    }
+
+    .video-frame {
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      background: #fff;
+      padding: 14px;
+    }
+
+    .video-frame video {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      border-radius: 12px;
+      background: #0f172a;
+    }
+
+    .caption {
+      padding: 10px 14px;
+      font-size: 14px;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+      background: #f9fafb;
+    }
+
+    .footer {
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+      padding: 6px 0 26px;
+    }
+
+    .badge-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .badge {
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #f9fafb;
+      font-size: 14px;
+    }
+
+    .svg-flow-wrap {
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+
+    .svg-flow-wrap svg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .flow-title {
+      font-size: 14px;
+      fill: #334155;
+      font-weight: 700;
+    }
+
+    .flow-text {
+      font-size: 14px;
+      fill: #1f2937;
+      font-weight: 600;
+    }
+
+    .flow-subtext {
+      font-size: 12px;
+      fill: #64748b;
+    }
+
+    @media (max-width: 640px) {
+      .hero-card, .card {
+        padding: 22px 18px;
+        border-radius: 20px;
+      }
+
+      .toc-card {
+        padding: 18px 16px;
+      }
+
+      .eyebrow-row {
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <div class="hero-card">
+        <div class="eyebrow-row">
+          <div class="eyebrow">位置服务与实践 · 课程成果</div>
+          <div class="eyebrow">课程老师：李由</div>
+        </div>
+        <h1>基于 HMM 的 GPS 轨迹地图匹配复现与实验分析</h1>
+        <p class="subtitle">
+          围绕经典 HMM 地图匹配方法与加入趋势约束的 trendHMM 展开复现，结合模拟轨迹、真实动态轨迹以及武汉大学公开数据进行实验对比，并对评价指标进行改进分析。
+        </p>
+      </div>
+    </div>
+  </header>
+
+  <div class="toc">
+    <div class="wrap">
+      <div class="toc-card">
+        <h2 class="toc-title">目录</h2>
+        <ol class="toc-list">
+          <li class="toc-item">
+            <a href="#intro">一、项目背景</a>
+          </li>
+          <li class="toc-item">
+            <a href="#method">二、方法介绍</a>
+            <ol class="toc-sublist">
+              <li class="toc-subitem"><a href="#method">2.1 HMM 地图匹配的基本思想</a></li>
+              <li class="toc-subitem"><a href="#method">2.2 trendHMM 的改进思路</a></li>
+            </ol>
+          </li>
+          <li class="toc-item">
+            <a href="#data">三、数据准备</a>
+            <ol class="toc-sublist">
+              <li class="toc-subitem"><a href="#data">3.1 路网数据</a></li>
+              <li class="toc-subitem"><a href="#data">3.2 模拟轨迹数据</a></li>
+              <li class="toc-subitem"><a href="#data">3.3 真实动态轨迹数据</a></li>
+              <li class="toc-subitem"><a href="#data">3.4 武汉大学公开数据</a></li>
+            </ol>
+          </li>
+          <li class="toc-item">
+            <a href="#design">四、实验设计</a>
+            <ol class="toc-sublist">
+              <li class="toc-subitem"><a href="#design">4.1 实验场景</a></li>
+              <li class="toc-subitem"><a href="#design">4.2 两组真实数据实验</a></li>
+            </ol>
+          </li>
+          <li class="toc-item">
+            <a href="#metric">五、评价指标设计</a>
+            <ol class="toc-sublist">
+              <li class="toc-subitem"><a href="#metric">5.1 原始指标：相对路径长度误差</a></li>
+              <li class="toc-subitem"><a href="#metric">5.2 改进指标</a></li>
+            </ol>
+          </li>
+          <li class="toc-item">
+            <a href="#result">六、实验结果与分析</a>
+            <ol class="toc-sublist">
+              <li class="toc-subitem"><a href="#result">6.1 模拟数据实验结果</a></li>
+              <li class="toc-subitem"><a href="#result">6.2 真实动态轨迹：lj010617k_kinematic2.1.pos</a></li>
+              <li class="toc-subitem"><a href="#result">6.3 武汉大学公开数据：GIOW-release</a></li>
+            </ol>
+          </li>
+          <li class="toc-item">
+            <a href="#thoughts">七、总结与个人反思</a>
+          </li>
+          <li class="toc-item">
+            <a href="#refs">八、参考文献</a>
+          </li>
+        </ol>
+      </div>
+  </div>
+
+  <main class="wrap">
+    <section id="intro">
+      <div class="card">
+        <h2>一、项目背景</h2>
+        <p>
+          地图匹配的核心任务，是将带有定位误差的轨迹点匹配到真实道路网络上，从而推断车辆或行人的实际行驶路径。在这一问题中，经典隐马尔可夫模型（Hidden Markov Model, HMM）方法具有很强的代表性。它把 GPS 观测点看作观测状态，把道路网络中的候选道路段看作隐状态，再通过发射概率描述“某个轨迹点来自某条道路的可能性”，通过转移概率描述“相邻轨迹点之间沿道路网络转移的合理性”，最后利用 Viterbi 算法在整条轨迹上寻找最优匹配路径。正因为 HMM 能够同时处理定位噪声与路径连续性，它已经成为地图匹配研究中最经典、最具基础性的技术路线之一。
+        </p>
+        <p>
+          这种基础性并不只体现在传统导航场景中。在今天的位置智能应用中，地图匹配仍然广泛关联于自动驾驶与高阶辅助驾驶、智能网联汽车、车路协同、物流配送路径管理、网约车轨迹校正、共享出行调度、交通流状态识别、城市时空大数据分析、外卖与即时配送定位服务、移动对象行为理解，以及面向数字孪生城市的时空轨迹治理等多个新场景。无论是自动驾驶系统中的高精定位结果约束、车辆历史轨迹回放与道路级语义理解，还是智慧交通中的出行路径还原与异常轨迹识别，其底层都离不开“如何把不完全准确的定位序列可靠地对应到真实道路网络”这一问题。从这个意义上说，HMM 不只是一个经典算法模型，也仍然是连接传统地图匹配研究与当代智能交通、自动驾驶、位置服务新应用之间的重要桥梁。
+        </p>
+
+        <div class="placeholder" style="margin-top:18px;">
+          <p><strong>地图匹配在位置智能应用中的关联示意</strong></p>
+          <div class="svg-flow-wrap">
+            <svg viewBox="0 0 940 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="地图匹配应用关联示意图">
+              <defs>
+                <marker id="appArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+                  <path d="M0,0 L10,5 L0,10 Z" fill="#2563eb"/>
+                </marker>
+              </defs>
+
+              <rect x="0" y="0" width="940" height="380" fill="#ffffff"/>
+
+              <!-- 中心节点 -->
+              <rect x="350" y="150" rx="20" ry="20" width="240" height="90" fill="#eef6ff" stroke="#93c5fd" stroke-width="2"/>
+              <text x="470" y="185" text-anchor="middle" class="flow-text">地图匹配</text>
+              <text x="470" y="210" text-anchor="middle" class="flow-subtext">GPS → 道路网络</text>
+
+              <!-- 左侧应用 -->
+              <rect x="60" y="40" rx="16" ry="16" width="200" height="60" fill="#eefbf2" stroke="#86efac"/>
+              <text x="160" y="75" text-anchor="middle" class="flow-text">自动驾驶 / ADAS</text>
+
+              <rect x="60" y="120" rx="16" ry="16" width="200" height="60" fill="#fff8eb" stroke="#fbbf24"/>
+              <text x="160" y="155" text-anchor="middle" class="flow-text">智能网联汽车</text>
+
+              <rect x="60" y="200" rx="16" ry="16" width="200" height="60" fill="#f3efff" stroke="#c4b5fd"/>
+              <text x="160" y="235" text-anchor="middle" class="flow-text">车路协同</text>
+
+              <rect x="60" y="280" rx="16" ry="16" width="200" height="60" fill="#fef2f2" stroke="#fca5a5"/>
+              <text x="160" y="315" text-anchor="middle" class="flow-text">智慧交通分析</text>
+
+              <!-- 右侧应用 -->
+              <rect x="680" y="40" rx="16" ry="16" width="200" height="60" fill="#fff8eb" stroke="#fbbf24"/>
+              <text x="780" y="75" text-anchor="middle" class="flow-text">网约车 / 出行调度</text>
+
+              <rect x="680" y="120" rx="16" ry="16" width="200" height="60" fill="#eefbf2" stroke="#86efac"/>
+              <text x="780" y="155" text-anchor="middle" class="flow-text">物流配送路径</text>
+
+              <rect x="680" y="200" rx="16" ry="16" width="200" height="60" fill="#f3efff" stroke="#c4b5fd"/>
+              <text x="780" y="235" text-anchor="middle" class="flow-text">外卖 / 即时配送</text>
+
+              <rect x="680" y="280" rx="16" ry="16" width="200" height="60" fill="#fef2f2" stroke="#fca5a5"/>
+              <text x="780" y="315" text-anchor="middle" class="flow-text">数字孪生城市</text>
+
+              <!-- 连线 -->
+              <line x1="260" y1="70" x2="350" y2="175" stroke="#2563eb" stroke-width="2" marker-end="url(#appArrow)"/>
+              <line x1="260" y1="150" x2="350" y2="185" stroke="#2563eb" stroke-width="2" marker-end="url(#appArrow)"/>
+              <line x1="260" y1="230" x2="350" y2="205" stroke="#2563eb" stroke-width="2" marker-end="url(#appArrow)"/>
+              <line x1="260" y1="310" x2="350" y2="215" stroke="#2563eb" stroke-width="2" marker-end="url(#appArrow)"/>
+
+              <line x1="680" y1="70" x2="590" y2="175" stroke="#2563eb" stroke-width="2" marker-end="url(#appArrow)"/>
+              <line x1="680" y1="150" x2="590" y2="185" stroke="#2563eb" stroke-width="2" marker-end="url(#appArrow)"/>
+              <line x1="680" y1="230" x2="590" y2="205" stroke="#2563eb" stroke-width="2" marker-end="url(#appArrow)"/>
+              <line x1="680" y1="310" x2="590" y2="215" stroke="#2563eb" stroke-width="2" marker-end="url(#appArrow)"/>
+
+              <text x="470" y="355" text-anchor="middle" class="flow-subtext">地图匹配作为核心环节，连接多种位置智能应用场景</text>
+            </svg>
+          </div>
+        </div>
+
+        <p>
+          在当前研究背景下，HMM 依然值得专门讨论。其原因不只是因为它“经典”，更因为它准确抓住了地图匹配问题中最关键的矛盾：一方面，轨迹观测存在噪声，单纯按最近道路匹配很容易出错；另一方面，真实行驶路径又必须满足道路拓扑约束，不能脱离路网的连通关系任意跳转。Newson 和 Krumm 的研究表明，HMM 可以在噪声与低采样率条件下，以较为统一的概率框架完成地图匹配；而 Lou 等人在低采样率轨迹研究中进一步说明，当采样间隔增大时，轨迹不确定性会明显上升，地图匹配问题也会随之变得更加困难。因此，围绕 HMM 这一基础模型展开理解、复现与改进，不仅有助于把握地图匹配的基本原理，也有助于理解后续各种改进方法到底是在解决什么问题。
+        </p>
+        <p>
+          从研究发展的角度看，后续许多地图匹配方法虽然形式不同，但本质上都在回应同一个问题：当轨迹噪声更大、采样率更低、道路环境更复杂时，如何在“相信观测”与“相信路网约束”之间取得更合理的平衡。也正因为如此，经典 HMM 并不是一个已经失去意义的旧方法，恰恰相反，它仍然是理解地图匹配问题、比较改进策略有效性以及分析实验结果差异的重要参照。
+        </p>
+        <div class="note">
+          那么，在已有研究已经证明 HMM 能够有效处理噪声与稀疏采样地图匹配问题的前提下，若进一步加入轨迹方向趋势这一约束信息，是否能够在具体实验场景中得到比经典 HMM 更稳定的匹配结果？
+        </div>
+      </div>
+    </section>
+
+    <section id="method">
+      <div class="card">
+        <h2>二、方法介绍</h2>
+        <h3>2.1 HMM 地图匹配的基本思想</h3>
+        <p>
+          HMM 地图匹配的核心思想，是把“带噪声的轨迹观测”与“隐藏在观测背后的真实道路路径”区分开来处理。也就是说，GPS 设备记录到的经纬度点并不直接等同于车辆真实所在的道路位置，它们只是受定位误差影响后的观测结果；而车辆真正行驶过的道路边序列，才是算法希望恢复出来的隐含状态序列。基于这种认识，HMM 将地图匹配问题表述为一个典型的“由观测推断隐藏状态”的序列决策问题，从而能够在整条轨迹层面而不是单个点层面进行路径判断。
+        </p>
+        <p>
+          在具体实现上，算法通常首先针对每个 GPS 轨迹点，在其邻域范围内搜索若干条候选道路边，并计算轨迹点到这些道路边的投影位置。这样做的原因在于：一个轨迹点附近往往不只存在一条可能道路，尤其是在平行道路、交叉口、立交桥或密集城市路网环境中，仅凭最近距离并不能可靠判断其真实所属道路。因此，HMM 不会在一开始就直接做出“唯一匹配”，而是先为每个轨迹点保留一个候选状态集合，为后续的整体路径推断提供可能性空间。
+        </p>
+        <p>
+          在候选状态集合建立之后，HMM 需要回答两个基本问题。第一个问题是：对于当前这个 GPS 点来说，某一条候选道路边到底有多大可能是真实位置？这对应发射概率（emission probability）的构造。一般而言，若轨迹点到某条道路边的垂直距离越小，则该道路边作为真实匹配结果的可能性就越大；反之，距离越大，则可能性越低。发射概率的作用，就是用概率形式把“观测点与候选道路之间的空间接近程度”表达出来，使算法能够量化单点层面的匹配合理性。
+        </p>
+        <p>
+          第二个问题是：从前一个轨迹点的某条候选道路，转移到当前轨迹点的另一条候选道路，这样的变化是否符合真实行驶过程？这对应转移概率（transition probability）的构造。与只看单点距离不同，转移概率强调的是相邻轨迹点之间的路径连续性。实际处理中，通常会比较两类距离：一类是相邻两个 GPS 点之间的直线距离，另一类是对应候选投影点在道路网络上的最短路径距离。如果两者差异较小，说明车辆沿该路网路径运动是合理的，转移概率就较大；如果两者差异明显偏大，说明从前一候选状态过渡到当前候选状态需要绕行过远，或者与实际运动规律不符，转移概率就会减小。
+        </p>
+        <p>
+          由此可见，HMM 地图匹配并不是简单地把“离得最近的道路”逐点串联起来，而是在每一个观测点上综合考虑“单点贴近程度”和“前后路径连通合理性”两个层面。前者保证轨迹点不会被匹配到明显偏离的位置，后者保证整条轨迹不会出现不合逻辑的跳变。正是发射概率与转移概率的结合，使 HMM 能在噪声存在、局部路网复杂或采样率下降时，仍然保持较强的整体判别能力。
+        </p>
+        <p>
+          当所有候选状态及其概率关系都建立完成后，算法便可利用 Viterbi 算法求解全局最优的隐状态序列。Viterbi 的基本思想是动态规划：它不会穷举所有可能的道路组合，而是逐步记录“到达当前候选状态时最优路径的累计概率”，并保留对应的前驱状态。等整条轨迹处理结束后，再通过回溯得到总体概率最大的那一条候选道路边序列。这样，最终得到的地图匹配结果并不是局部最优点的简单拼接，而是兼顾整条轨迹连续性的全局最优路径。
+        </p>
+        <p>
+          从方法特征上看，HMM 地图匹配之所以经典，就在于它较好地统一了地图匹配问题中的三个关键因素：观测噪声、道路网络约束和时序连续性。它既不像纯几何方法那样过度依赖点到路的最近距离，也不像完全基于规则的方法那样难以处理概率不确定性，而是在概率框架中把“点的位置是否合理”和“路径是否连贯”同时纳入判断。因此，无论是在早期导航轨迹处理研究中，还是在今天涉及自动驾驶、车路协同、轨迹挖掘和时空行为分析的应用场景中，HMM 仍然是理解地图匹配方法体系的一条重要主线。
+        </p>
+
+        <div class="placeholder" style="margin-top:18px;">
+          <p><strong>HMM 地图匹配流程图</strong></p>
+          <div class="svg-flow-wrap">
+            <svg viewBox="0 0 940 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="HMM 地图匹配流程图">
+              <defs>
+                <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+                  <path d="M0,0 L10,5 L0,10 Z" fill="#2563eb"/>
+                </marker>
+              </defs>
+
+              <rect x="0" y="0" width="940" height="360" fill="#ffffff"/>
+              <text x="40" y="42" class="flow-title">HMM 地图匹配核心流程</text>
+
+              <rect x="40" y="90" rx="18" ry="18" width="130" height="82" fill="#eef6ff" stroke="#93c5fd" stroke-width="2"/>
+              <text x="105" y="123" text-anchor="middle" class="flow-text">轨迹输入</text>
+              <text x="105" y="146" text-anchor="middle" class="flow-subtext">GPS 点序列</text>
+
+              <rect x="200" y="90" rx="18" ry="18" width="150" height="82" fill="#eefbf2" stroke="#86efac" stroke-width="2"/>
+              <text x="275" y="123" text-anchor="middle" class="flow-text">候选道路搜索</text>
+              <text x="275" y="146" text-anchor="middle" class="flow-subtext">邻域道路边与投影点</text>
+
+              <rect x="380" y="90" rx="18" ry="18" width="150" height="82" fill="#fff8eb" stroke="#fbbf24" stroke-width="2"/>
+              <text x="455" y="123" text-anchor="middle" class="flow-text">发射概率计算</text>
+              <text x="455" y="146" text-anchor="middle" class="flow-subtext">点到候选道路距离</text>
+
+              <rect x="560" y="90" rx="18" ry="18" width="150" height="82" fill="#f3efff" stroke="#c4b5fd" stroke-width="2"/>
+              <text x="635" y="123" text-anchor="middle" class="flow-text">转移概率计算</text>
+              <text x="635" y="146" text-anchor="middle" class="flow-subtext">路网最短路径合理性</text>
+
+              <rect x="740" y="90" rx="18" ry="18" width="160" height="82" fill="#fef2f2" stroke="#fca5a5" stroke-width="2"/>
+              <text x="820" y="123" text-anchor="middle" class="flow-text">Viterbi 求解</text>
+              <text x="820" y="146" text-anchor="middle" class="flow-subtext">全局最优隐状态序列</text>
+
+              <line x1="170" y1="131" x2="200" y2="131" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/>
+              <line x1="350" y1="131" x2="380" y2="131" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/>
+              <line x1="530" y1="131" x2="560" y2="131" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/>
+              <line x1="710" y1="131" x2="740" y2="131" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/>
+
+              <rect x="315" y="230" rx="18" ry="18" width="310" height="84" fill="#eef6ff" stroke="#93c5fd" stroke-width="2"/>
+              <text x="470" y="262" text-anchor="middle" class="flow-text">输出地图匹配结果</text>
+              <text x="470" y="286" text-anchor="middle" class="flow-subtext">最优道路边序列与匹配路径</text>
+
+              <path d="M820 172 C820 215, 660 215, 625 230" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/>
+              <text x="470" y="340" text-anchor="middle" class="flow-subtext">发射概率刻画单点空间贴近性，转移概率刻画路径连通合理性，Viterbi 负责全局最优求解。</text>
+            </svg>
+            
+          </div>
+        </div>
+
+        <h3>2.2 trendHMM 的改进思路</h3>
+        <p>
+          trendHMM 可以理解为在经典 HMM 地图匹配框架上的一种定向改进。它并不改变 HMM “观测状态—隐状态—最优路径求解”这一基本结构，也不否定发射概率和转移概率在地图匹配中的核心作用，而是在此基础上进一步追问：如果轨迹本身在局部已经表现出较明确的前进趋势，那么这种趋势信息是否也应该被纳入状态转移判断之中？也就是说，经典 HMM 主要关心“这个点离哪条路更近”和“前后两点之间沿路网转移是否合理”，而 trendHMM 进一步关注“这种转移是否与轨迹整体的前进方向相一致”。
+        </p>
+        <p>
+          这一改进思路的提出，针对的是经典 HMM 在某些场景下可能面临的局限。虽然转移概率已经考虑了道路网络上的最短路径合理性，但它本质上仍然更多依赖距离层面的约束。当路网较为复杂、候选道路较多，或者轨迹点位于交叉口、分岔口、平行道路邻近区域时，仅凭“点到路距离”和“路径长度差异”有时仍然不足以区分多个看似都合理的候选转移。在这种情况下，若轨迹局部已经呈现出某种连续的运动趋势，例如总体朝某一方向前进，那么把这种趋势显式纳入匹配过程，就有可能进一步压缩不合理候选路径的空间。
+        </p>
+        <p>
+          因此，trendHMM 的核心思想，是在经典 HMM 的转移建模中加入轨迹方向趋势约束。这里的“趋势”并不是指单个点瞬时的朝向值，而更接近一种由相邻轨迹点或局部点序列共同反映出来的整体运动方向信息。与单点方向相比，这种趋势信息更强调局部连续性，也更接近真实运动轨迹的演化过程。其直观含义是：如果轨迹在当前位置附近整体表现为向前、向左转或向右转等较稳定的变化趋势，那么最终选择的候选道路转移，也应尽可能与这种趋势保持一致，而不应仅仅因为某条道路在几何距离上略近就被优先接受。
+        </p>
+        <p>
+          从方法机制上看，trendHMM 并不是额外替换掉发射概率，而主要是在状态转移层面增加一种新的判别依据。也就是说，在评估“前一时刻候选道路”到“当前时刻候选道路”的转移是否合理时，除了考察路网最短路径长度与轨迹观测距离之间的匹配程度之外，还要进一步考察该候选转移方向与轨迹局部趋势方向之间的一致性。如果某条候选转移不仅在路径长度上合理，而且在方向上也与轨迹趋势更接近，那么它就应获得更高的转移支持；反之，若某条候选路径虽然长度上勉强可行，但方向明显背离轨迹整体前进趋势，则其合理性应被削弱。
+        </p>
+        <p>
+          这种设计的优势在于，它为经典 HMM 增加了一个面向运动语义的约束维度。经典 HMM 更强调“空间位置是否合理”和“路径连通是否合理”，而 trendHMM 进一步强调“运动方向是否合理”。在许多真实场景中，车辆和行人的运动往往并不是完全随机的，而具有明显的连续性和惯性特征；因此，将趋势约束纳入状态转移判断，有助于使匹配结果更符合真实运动过程，而不是停留在单纯的几何贴合层面。
+        </p>
+        <p>
+          不过，trendHMM 的改进并不意味着它在所有情况下都必然优于经典 HMM。趋势约束能否真正发挥作用，取决于多个条件是否同时满足。例如，当轨迹采样较稳定、局部运动方向较清晰、路网歧义较强时，趋势信息往往能够帮助算法排除部分不合理候选；但当轨迹噪声较大、采样点过稀、方向本身波动明显，或者场景中存在频繁转弯与复杂交叉结构时，趋势信息也可能受到干扰，甚至把算法引向错误的偏好路径。因此，trendHMM 更适合被理解为一种“在经典 HMM 上增加方向判别能力”的改进尝试，而不是对原有方法的简单替代。
+        </p>
+        <p>
+          也正因为如此，trendHMM 的意义并不仅仅在于提出了一个新项，而在于它回应了地图匹配研究中的一个更深层问题：当多个候选路径在距离和拓扑上都看起来合理时，是否可以进一步借助轨迹自身的运动趋势来做出更贴近真实行为的判断？围绕这一思路，本文在经典 HMM 的基础上实现了 trendHMM，并通过模拟轨迹、RTKLIB 动态解算轨迹和武汉大学公开数据对两种方法进行对比，以检验趋势约束在不同噪声水平和采样条件下究竟能带来怎样的实际影响。
+        </p>
+
+        <div class="placeholder" style="margin-top:18px;">
+          <p><strong>trendHMM 改进思路流程图</strong></p>
+          <div class="svg-flow-wrap">
+            <svg viewBox="0 0 940 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="trendHMM 改进思路流程图">
+              <defs>
+                <marker id="trendArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+                  <path d="M0,0 L10,5 L0,10 Z" fill="#2563eb"/>
+                </marker>
+              </defs>
+
+              <rect x="0" y="0" width="940" height="420" fill="#ffffff"/>
+              <text x="40" y="40" class="flow-title">trendHMM 在经典 HMM 基础上的改进逻辑</text>
+
+              <rect x="40" y="90" rx="18" ry="18" width="160" height="88" fill="#eef6ff" stroke="#93c5fd" stroke-width="2"/>
+              <text x="120" y="122" text-anchor="middle" class="flow-text">经典 HMM 输入</text>
+              <text x="120" y="146" text-anchor="middle" class="flow-subtext">候选道路 + 发射概率</text>
+              <text x="120" y="165" text-anchor="middle" class="flow-subtext">+ 转移概率</text>
+
+              <rect x="240" y="90" rx="18" ry="18" width="180" height="88" fill="#eefbf2" stroke="#86efac" stroke-width="2"/>
+              <text x="330" y="122" text-anchor="middle" class="flow-text">提取局部轨迹趋势</text>
+              <text x="330" y="146" text-anchor="middle" class="flow-subtext">相邻点或局部点序列</text>
+              <text x="330" y="165" text-anchor="middle" class="flow-subtext">反映整体运动方向</text>
+
+              <rect x="460" y="90" rx="18" ry="18" width="180" height="88" fill="#fff8eb" stroke="#fbbf24" stroke-width="2"/>
+              <text x="550" y="122" text-anchor="middle" class="flow-text">趋势一致性判断</text>
+              <text x="550" y="146" text-anchor="middle" class="flow-subtext">比较候选转移方向</text>
+              <text x="550" y="165" text-anchor="middle" class="flow-subtext">与轨迹趋势是否一致</text>
+
+              <rect x="680" y="90" rx="18" ry="18" width="200" height="88" fill="#f3efff" stroke="#c4b5fd" stroke-width="2"/>
+              <text x="780" y="122" text-anchor="middle" class="flow-text">修正转移支持强度</text>
+              <text x="780" y="146" text-anchor="middle" class="flow-subtext">一致则增强</text>
+              <text x="780" y="165" text-anchor="middle" class="flow-subtext">背离则削弱</text>
+
+              <line x1="200" y1="134" x2="240" y2="134" stroke="#2563eb" stroke-width="3" marker-end="url(#trendArrow)"/>
+              <line x1="420" y1="134" x2="460" y2="134" stroke="#2563eb" stroke-width="3" marker-end="url(#trendArrow)"/>
+              <line x1="640" y1="134" x2="680" y2="134" stroke="#2563eb" stroke-width="3" marker-end="url(#trendArrow)"/>
+
+              <rect x="220" y="260" rx="18" ry="18" width="230" height="94" fill="#eefbf2" stroke="#86efac" stroke-width="2"/>
+              <text x="335" y="295" text-anchor="middle" class="flow-text">trendHMM 转移建模</text>
+              <text x="335" y="319" text-anchor="middle" class="flow-subtext">传统路径长度合理性</text>
+              <text x="335" y="338" text-anchor="middle" class="flow-subtext">+ 趋势方向一致性</text>
+
+              <rect x="500" y="260" rx="18" ry="18" width="250" height="94" fill="#eef6ff" stroke="#93c5fd" stroke-width="2"/>
+              <text x="625" y="295" text-anchor="middle" class="flow-text">输出更具方向约束的</text>
+              <text x="625" y="319" text-anchor="middle" class="flow-text">全局最优匹配路径</text>
+              <text x="625" y="338" text-anchor="middle" class="flow-subtext">用于与经典 HMM 对比分析</text>
+
+              <path d="M780 178 C780 225, 700 235, 635 260" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#trendArrow)"/>
+              <path d="M550 178 C550 225, 430 235, 365 260" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#trendArrow)"/>
+              <line x1="450" y1="307" x2="500" y2="307" stroke="#2563eb" stroke-width="3" marker-end="url(#trendArrow)"/>
+
+              <text x="470" y="392" text-anchor="middle" class="flow-subtext">核心改动不在于替换 HMM 结构，而在于把轨迹局部趋势作为新的转移判别依据引入状态转移阶段。</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="data">
+      <div class="card">
+        <h2>三、数据准备</h2>
+
+        <h3>3.1 路网数据</h3>
+        <p>
+          本项目所使用的路网数据来自 OpenStreetMap（OSM）。OSM 是一个开源的全球地图项目，提供了较为完整的道路几何与拓扑信息。实际使用时，我通过第三方站点下载了对应区域的离线数据文件（PBF 格式），下载地址为：
+          <br>
+          <code>https://download.geofabrik.de/asia/china/hubei-latest.osm.pbf</code>
+          <br>
+          随后利用 <code>pyrosm</code> 对数据进行解析，并根据实验区域对路网进行了裁剪，最终得到武汉大学附近的局部道路网络。
+        </p>
+        <p>
+          之所以选择这类数据，一方面是因为地图匹配本质上就是“把轨迹点放到道路上”，因此必须有一个可靠的道路网络作为参照；另一方面，OSM 数据开源、更新及时，而且可以离线使用，这样可以保证整个实验过程中数据是一致的，不会因为在线地图更新而影响结果。此外，路网中包含的道路连接关系（也就是拓扑结构）正好对应 HMM 中转移概率的计算基础，因此它不仅仅是一个“背景底图”，而是直接参与到了算法建模过程当中。
+        </p>
+
+        <div class="placeholder" style="margin-top:18px;">
+          <p><strong>局部道路网络可视化图</strong></p>
+          <div class="image-frame">
+            <img src="./images/embedded_plot_1.png" alt="武汉大学附近局部道路网络图" />
+            <div class="caption">由本地 OSM PBF 文件裁剪得到的武汉大学附近局部道路网络。</div>
+          </div>
+        </div>
+
+        <h3>3.2 模拟轨迹数据</h3>
+        <p>
+          本项目首先从模拟轨迹数据入手，对地图匹配方法进行基础验证。简单来说，这部分数据是在已有路网基础上“人为生成”的轨迹：先选取一条确定的道路路径，按一定间隔采样得到一条理想轨迹，然后在这些点上加入不同程度的随机扰动，从而模拟实际 GNSS 定位中常见的误差情况。
+        </p>
+        <p>
+          之所以需要这类数据，是因为它有一个很重要的特点——真实路径是已知的。也就是说，我们可以清楚地知道“正确答案是什么”，从而可以直接判断地图匹配结果是否偏离了真实道路。这一点是纯真实数据很难做到的。同时，通过控制噪声大小（例如 0 m、5 m、10 m、20 m）以及采样间隔（step=1/2/3/5），可以人为构造不同难度的实验场景，用来观察算法在各种条件下的表现变化。
+        </p>
+        <p>
+          因此，在本项目中，模拟轨迹数据主要用于两个方面：一是作为算法实现的基础验证，检查整个地图匹配流程是否正确；二是作为后续真实数据实验的对照基线，使实验结果更具可解释性，而不是仅停留在现象层面的比较。
+        </p>
+
+        <div class="placeholder" style="margin-top:16px;">
+          <p><strong>模拟轨迹与道路网络叠加图</strong></p>
+          <div class="image-frame">
+            <img src="./images/embedded_plot_2.png" alt="模拟轨迹与道路网络叠加图" />
+            <div class="caption">原始模拟轨迹与裁剪后道路网络叠加显示。</div>
+          </div>
+        </div>
+
+        <h3>3.3 真实动态轨迹数据</h3>
+        <p>
+          在完成模拟轨迹验证之后，项目进一步引入真实动态轨迹数据，用于检验算法在实际定位环境中的表现。该数据来源于 GNSS 观测结果，本项目使用的文件为 <code>lj010617k_kinematic2.1.pos</code>，是通过 RTKLIB 在动态模式（Kinematic）下解算得到的轨迹数据，记录了随时间变化的位置信息。
+        </p>
+        <p>
+          与前面的模拟数据相比，这类数据不再是人为构造的，而是包含了真实环境中的各种影响因素，例如卫星几何分布变化、建筑遮挡、多路径效应以及接收机本身误差等。因此，它更接近地图匹配在实际应用中的输入情况。
+        </p>
+        <p>
+          引入该数据的目的，一方面是检验在“没有标准答案”的情况下，算法是否仍然能够得到稳定、一致的匹配结果；另一方面，也是为了观察 HMM 与 trendHMM 在真实轨迹上的差异表现。
+        </p>
+
+        <div class="placeholder" style="margin-top:18px;">
+          <p><strong>真实动态轨迹预处理流程图</strong></p>
+          <div class="svg-flow-wrap">
+            <svg viewBox="0 0 940 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="真实动态轨迹预处理流程图">
+              <defs>
+                <marker id="kinArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+                  <path d="M0,0 L10,5 L0,10 Z" fill="#2563eb"/>
+                </marker>
+              </defs>
+              <rect x="0" y="0" width="940" height="300" fill="#ffffff"/>
+              <text x="40" y="42" class="flow-title">RTKLIB 动态轨迹预处理主线</text>
+
+              <rect x="40" y="100" rx="18" ry="18" width="180" height="88" fill="#eef6ff" stroke="#93c5fd" stroke-width="2"/>
+              <text x="130" y="132" text-anchor="middle" class="flow-text">原始输入</text>
+              <text x="130" y="156" text-anchor="middle" class="flow-subtext">lj010617k_kinematic2.1.pos</text>
+
+              <rect x="270" y="100" rx="18" ry="18" width="180" height="88" fill="#eefbf2" stroke="#86efac" stroke-width="2"/>
+              <text x="360" y="132" text-anchor="middle" class="flow-text">格式解析</text>
+              <text x="360" y="156" text-anchor="middle" class="flow-subtext">convert_pos_to_csv.py</text>
+              <text x="360" y="176" text-anchor="middle" class="flow-subtext">输出 gps_kinematic_raw.csv</text>
+
+              <rect x="500" y="100" rx="18" ry="18" width="180" height="88" fill="#fff8eb" stroke="#fbbf24" stroke-width="2"/>
+              <text x="590" y="132" text-anchor="middle" class="flow-text">质量筛选</text>
+              <text x="590" y="156" text-anchor="middle" class="flow-subtext">保留 Q=1 / Q=2</text>
+              <text x="590" y="176" text-anchor="middle" class="flow-subtext">生成 gps_kinematic_q1q2.csv</text>
+
+              <rect x="730" y="100" rx="18" ry="18" width="170" height="88" fill="#f3efff" stroke="#c4b5fd" stroke-width="2"/>
+              <text x="815" y="132" text-anchor="middle" class="flow-text">匹配输入生成</text>
+              <text x="815" y="156" text-anchor="middle" class="flow-subtext">make_match_csv.py</text>
+              <text x="815" y="176" text-anchor="middle" class="flow-subtext">输出 gps_kinematic_match.csv</text>
+
+              <line x1="220" y1="144" x2="270" y2="144" stroke="#2563eb" stroke-width="3" marker-end="url(#kinArrow)"/>
+              <line x1="450" y1="144" x2="500" y2="144" stroke="#2563eb" stroke-width="3" marker-end="url(#kinArrow)"/>
+              <line x1="680" y1="144" x2="730" y2="144" stroke="#2563eb" stroke-width="3" marker-end="url(#kinArrow)"/>
+
+              <text x="470" y="252" text-anchor="middle" class="flow-subtext">先解析 .pos 文件，再筛选高质量定位结果，最后抽取 time/lat/lon 作为地图匹配输入。</text>
+            </svg>
+          </div>
+        </div>
+
+        <div class="placeholder" style="margin-top:16px;">
+          <p><strong>真实动态轨迹与道路网络叠加图</strong></p>
+          <div class="image-frame">
+            <img src="./images/embedded_plot_3.png" alt="真实动态轨迹与道路网络叠加图" />
+            <div class="caption">RTKLIB 动态解算结果轨迹与道路网络叠加显示。</div>
+          </div>
+        </div>
+
+        <h3>3.4 武汉大学公开数据</h3>
+        <p>
+          在真实动态轨迹实验的基础上，项目进一步引入武汉大学 i2Nav 团队发布的 GIOW-release 数据集，项目地址为 <code>https://github.com/i2Nav-WHU/GIOW-release</code>，作为另一类独立的数据来源。与前面的 RTKLIB 动态轨迹相比，这组数据并非本地采集结果，而是来自公开研究工作，因此能够为本项目提供另一种具有研究背景的真实轨迹输入。该数据最初以 <code>reference_result.nav</code> 的形式提供，需要经过解析与格式转换后，才能进一步用于地图匹配实验。
+        </p>
+        <p>
+          实际处理中，首先将原始 <code>.nav</code> 文件解析为标准轨迹格式，生成完整轨迹文件 <code>gps_giow_match.csv</code>，并以此作为后续地图匹配与轨迹可视化的直接输入。相比此前先裁剪再取子集的做法，直接保留完整轨迹能够更真实地反映这组公开数据本身的空间范围、路径连续性与采样特征，也更适合在网页中展示其整体分布情况。
+        </p>
+        <p>
+          引入该数据集的原因，主要在于它能够弥补单一本地真实轨迹数据在实验场景上的局限。首先，作为公开研究数据，它具有一定的代表性，有助于把本项目的实验放到更广泛的研究背景中理解；其次，它的轨迹规模、采样频率和数据特征与本地 RTKLIB 动态轨迹并不完全相同，因此能够扩展实验场景的多样性；最后，在需要构造低采样率场景时，也可以在完整轨迹基础上进一步做降采样处理，从而更有针对性地观察 HMM 与 trendHMM 在复杂场景下的表现差异。
+        </p>
+        <div class="placeholder" style="margin-top:18px;">
+          <p><strong>武汉大学公开数据预处理流程图</strong></p>
+          <div class="svg-flow-wrap">
+            <svg viewBox="0 0 940 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="GIOW 数据预处理流程图">
+              <defs>
+                <marker id="giowArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+                  <path d="M0,0 L10,5 L0,10 Z" fill="#2563eb"/>
+                </marker>
+              </defs>
+              <rect x="0" y="0" width="940" height="320" fill="#ffffff"/>
+              <text x="40" y="42" class="flow-title">GIOW-release 数据预处理主线</text>
+
+              <rect x="40" y="108" rx="18" ry="18" width="170" height="88" fill="#eef6ff" stroke="#93c5fd" stroke-width="2"/>
+              <text x="125" y="140" text-anchor="middle" class="flow-text">原始输入</text>
+              <text x="125" y="164" text-anchor="middle" class="flow-subtext">reference_result.nav</text>
+
+              <rect x="255" y="108" rx="18" ry="18" width="190" height="88" fill="#eefbf2" stroke="#86efac" stroke-width="2"/>
+              <text x="350" y="140" text-anchor="middle" class="flow-text">固定列解析</text>
+              <text x="350" y="164" text-anchor="middle" class="flow-subtext">convert_giow_nav_to_csv.py</text>
+              <text x="350" y="184" text-anchor="middle" class="flow-subtext">输出 gps_giow_match.csv</text>
+
+              <rect x="490" y="108" rx="18" ry="18" width="180" height="88" fill="#fff8eb" stroke="#fbbf24" stroke-width="2"/>
+              <text x="580" y="140" text-anchor="middle" class="flow-text">完整轨迹生成</text>
+              <text x="580" y="164" text-anchor="middle" class="flow-subtext">保留全时段轨迹点</text>
+              <text x="580" y="184" text-anchor="middle" class="flow-subtext">直接作为地图匹配输入</text>
+
+              <rect x="715" y="108" rx="18" ry="18" width="180" height="88" fill="#f3efff" stroke="#c4b5fd" stroke-width="2"/>
+              <text x="805" y="140" text-anchor="middle" class="flow-text">可选扩展</text>
+              <text x="805" y="164" text-anchor="middle" class="flow-subtext">如有需要再做降采样</text>
+              <text x="805" y="184" text-anchor="middle" class="flow-subtext">用于低采样率实验</text>
+
+              <line x1="210" y1="152" x2="255" y2="152" stroke="#2563eb" stroke-width="3" marker-end="url(#giowArrow)"/>
+              <line x1="445" y1="152" x2="490" y2="152" stroke="#2563eb" stroke-width="3" marker-end="url(#giowArrow)"/>
+              <line x1="670" y1="152" x2="715" y2="152" stroke="#2563eb" stroke-width="3" marker-end="url(#giowArrow)"/>
+
+              <text x="470" y="268" text-anchor="middle" class="flow-subtext">先解析 .nav 文件为完整标准轨迹，再直接用于地图匹配与展示；若有需要，再基于完整轨迹做降采样实验。</text>
+            </svg>
+          </div>
+        </div>
+
+        <div class="placeholder" style="margin-top:16px;">
+          <p><strong>GIOW-release 轨迹与道路网络叠加图</strong></p>
+          <div class="image-frame">
+            <img src="./images/embedded_plot_4.png" alt="GIOW-release 与道路网络叠加图" />
+            <div class="caption">武汉大学公开数据转换后的原始轨迹与道路网络叠加显示。</div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="design">
+      <div class="card">
+        <h2>四、实验设计</h2>
+        <p>
+          为比较经典 HMM 与 trendHMM 在不同轨迹条件下的表现，我们选择围绕地图匹配中最常见、也最容易影响结果的两类因素来设计实验，分别是“轨迹噪声”和“采样率变化”。之所以这样设计，是因为地图匹配本质上依赖两方面信息：一方面要判断单个轨迹点更可能落在哪条道路上，另一方面又要判断相邻轨迹点之间的路径连接是否合理。前者更容易受到定位误差影响，后者则与采样点是否足够密集密切相关。因此，如果希望真正看清 HMM 与 trendHMM 的差异，就不能只看原始轨迹上的一次结果，而需要把它们放到不同观测条件下进行对比。
+        </p>
+        <p>
+          具体来说，在实验过程中，先固定同一份轨迹数据、同一套路网数据以及同一套地图匹配流程，在此基础上分别构造多组不同输入场景。对于噪声实验，在原始轨迹经纬度上加入不同强度的随机扰动，用来模拟实际定位中常见的测量误差；对于采样率实验，则通过按固定步长抽取轨迹点的方式生成不同稀疏程度的轨迹输入，用来观察当点与点之间间隔逐渐增大时，算法是否仍然能够保持稳定匹配。这样做的目的，就是尽量把实验变量控制在“输入条件变化”本身，使最终结果能够更直接地反映两种算法在抗噪能力、路径连续性判断以及复杂场景适应性上的差别。
+        </p>
+        <p>
+          在完成这些输入构造之后，HMM 与 trendHMM 会分别在每一种场景下运行，并统一保存匹配结果、路径文件和评价指标。之所以采用批量脚本自动完成整个流程，是因为这样可以保证不同实验之间的数据处理方式、参数设置和输出格式保持一致，避免人工逐次操作带来的额外偏差。与此同时，本项目还以参考匹配结果作为对照，从路径长度、边重合率、边序列一致率以及平均匹配点距离等多个角度对结果进行评价。这样设计之后，实验不仅能够说明“哪一种方法效果更好”，也能够进一步解释“这种差异是在什么条件下出现的”，从而使后面的结果分析更有依据。
+        </p>
+
+        <div class="placeholder" style="margin-top:18px;">
+          <p><strong>实验流程图</strong></p>
+          <div class="svg-flow-wrap">
+            <svg viewBox="0 0 940 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="实验流程图">
+              <defs>
+                <marker id="expArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+                  <path d="M0,0 L10,5 L0,10 Z" fill="#2563eb"/>
+                </marker>
+              </defs>
+              <rect x="0" y="0" width="940" height="320" fill="#ffffff"/>
+              <text x="40" y="42" class="flow-title">地图匹配实验总体流程</text>
+
+              <rect x="40" y="108" rx="18" ry="18" width="180" height="88" fill="#eef6ff" stroke="#93c5fd" stroke-width="2"/>
+              <text x="130" y="140" text-anchor="middle" class="flow-text">轨迹输入</text>
+              <text x="130" y="164" text-anchor="middle" class="flow-subtext">模拟轨迹 / Kinematic / GIOW</text>
+
+              <rect x="270" y="108" rx="18" ry="18" width="180" height="88" fill="#eefbf2" stroke="#86efac" stroke-width="2"/>
+              <text x="360" y="140" text-anchor="middle" class="flow-text">场景构造</text>
+              <text x="360" y="164" text-anchor="middle" class="flow-subtext">reference / raw / noise / step</text>
+
+              <rect x="500" y="108" rx="18" ry="18" width="180" height="88" fill="#fff8eb" stroke="#fbbf24" stroke-width="2"/>
+              <text x="590" y="140" text-anchor="middle" class="flow-text">地图匹配</text>
+              <text x="590" y="164" text-anchor="middle" class="flow-subtext">HMM / trendHMM</text>
+
+              <rect x="730" y="108" rx="18" ry="18" width="170" height="88" fill="#f3efff" stroke="#c4b5fd" stroke-width="2"/>
+              <text x="815" y="140" text-anchor="middle" class="flow-text">结果评价</text>
+              <text x="815" y="164" text-anchor="middle" class="flow-subtext">汇总表与补充指标</text>
+
+              <line x1="220" y1="152" x2="270" y2="152" stroke="#2563eb" stroke-width="3" marker-end="url(#expArrow)"/>
+              <line x1="450" y1="152" x2="500" y2="152" stroke="#2563eb" stroke-width="3" marker-end="url(#expArrow)"/>
+              <line x1="680" y1="152" x2="730" y2="152" stroke="#2563eb" stroke-width="3" marker-end="url(#expArrow)"/>
+
+              <text x="470" y="272" text-anchor="middle" class="flow-subtext">统一轨迹输入后，先构造不同实验场景，再分别运行 HMM 与 trendHMM，最后输出结果汇总与评价指标。</text>
+            </svg>
+          </div>
+        </div>
+
+        <h3>4.1 实验场景</h3>
+        <p>
+          在具体实验中，本项目基于同一份原始轨迹数据进一步构造出多组不同输入场景，再分别运行 HMM 与 trendHMM 进行对比。整个过程始终使用同一套路网数据、同一套地图匹配流程以及统一的结果保存与评价方式，从而保证不同实验之间具有一致的比较基础。按照输入轨迹的处理方式不同，这些实验场景可以分为模拟轨迹原始实验、参考基准、原始轨迹实验、噪声实验和降采样实验几类。
+        </p>
+        <p>
+          其中，模拟轨迹原始实验对应最初构造的模拟轨迹数据，主要用于验证基础地图匹配流程是否能够正常运行；参考基准则先基于原始轨迹生成一组统一的参考匹配结果，用于后续各类实验的结果对照。原始轨迹实验直接使用未做额外处理的轨迹输入运行 HMM 与 trendHMM；噪声实验是在原始经纬度基础上叠加不同强度的随机扰动，形成多组带噪轨迹；降采样实验则通过按固定步长抽取轨迹点，生成不同稀疏程度的输入轨迹。各实验场景的具体含义如下表所示。
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>实验类型</th>
+              <th>场景名称</th>
+              <th>设计目的</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>模拟轨迹原始实验</td>
+              <td>simulation_raw</td>
+              <td>使用最初构造的模拟轨迹数据验证基础地图匹配流程能否正常工作，并作为后续真实数据实验之前的实现校验。</td>
+            </tr>
+            <tr>
+              <td>参考基准</td>
+              <td>reference_raw</td>
+              <td>先使用同一份原始轨迹运行 trendHMM 生成参考匹配结果，作为后续各组实验统一对照。</td>
+            </tr>
+            <tr>
+              <td>原始轨迹实验</td>
+              <td>raw</td>
+              <td>不对输入轨迹做额外处理，直接分别运行 HMM 与 trendHMM，用于观察两种方法在原始条件下的基本表现。</td>
+            </tr>
+            <tr>
+              <td>噪声实验</td>
+              <td>noise_0m / noise_5m / noise_10m / noise_20m</td>
+              <td>在原始经纬度上叠加不同强度的高斯噪声，用来模拟实际定位误差，并比较两种方法在抗噪声方面的稳定性。</td>
+            </tr>
+            <tr>
+              <td>降采样实验</td>
+              <td>step_1 / step_2 / step_3 / step_5</td>
+              <td>通过保留每隔若干点的方式降低采样率，模拟轨迹点逐渐稀疏的情况，用于观察路径连续性判断是否会随采样变稀而下降。</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>4.2 两组真实数据实验</h3>
+        <p>
+          在完成模拟轨迹验证之后，本项目进一步将实验对象扩展到两组真实轨迹数据，分别是基于 RTKLIB 解算得到的动态轨迹数据，以及武汉大学公开发布的 GIOW-release 数据。之所以选择这两组数据，是因为它们虽然都属于真实轨迹，但来源、采样特征和误差表现并不完全相同，能够从不同角度检验 HMM 与 trendHMM 在实际场景中的适用性。
+        </p>
+        <p>
+          第一组数据对应 <code>lj010617k_kinematic2.1.pos</code>，它来自真实动态 GNSS 观测，轨迹点数量相对较少，整体更接近短时、局部范围内的实际定位输入。这组数据的作用，主要是观察算法在较短真实轨迹上的基本匹配稳定性，并检验在点数有限、路网范围局部化的情况下，两种方法是否会表现出明显差异。
+        </p>
+        <p>
+          第二组数据对应武汉大学公开数据 GIOW-release。考虑到完整轨迹点数很多、直接全量实验对本地机器负担较大，本项目在实际实验中主要采用基于完整轨迹生成的全时段低采样版本，即保持完整时间范围不变，仅按约 1 秒保留 1 个点，作为当前批量实验的主要输入。这样处理之后，一方面保留了公开数据本身的整体轨迹结构和绕圈特征，另一方面也使实验能够在普通计算环境下稳定完成。相较于前一组 RTKLIB 动态轨迹，这组数据时间跨度更长、点数更多，也更适合用于观察当轨迹规模增大时，噪声扰动和采样率变化对两种算法的影响是否会进一步放大。
+        </p>
+        <p>
+          因此，这两组真实数据在实验中分别承担了不同角色：前者更强调局部真实定位场景下的稳定性验证，后者更强调公开真实轨迹场景下的可重复对比分析。将它们放在同一套实验框架下统一处理，可以使后续结果分析不仅停留在单一数据集上的现象描述，而能够进一步比较不同真实轨迹条件下 HMM 与 trendHMM 的表现差异。
+        </p>
+
+      </div>
+    </section>
+
+    <section id="metric">
+      <div class="card">
+        <h2>五、评价指标设计</h2>
+        <h3>5.1 原始指标：相对路径长度误差</h3>
+        <p>
+          项目最初采用相对路径长度误差作为评价指标，用于比较实验结果路径长度与参考路径长度之间的差异。在模拟轨迹原始实验和 GIOW 全时段低采样实验中，它能够反映出 HMM 与 trendHMM 在不同场景下的整体路径偏差，例如在原始轨迹、噪声扰动和部分降采样场景下，两种方法的相对长度误差已经出现了较明显的差别。
+        </p>
+        <p>
+          不过，这一指标只是一种较粗粒度的全局度量，它更适合描述“整条匹配路径偏离参考路径的总体程度”，却难以揭示路径内部的具体差异。在部分实验中，即使两种方法的相对路径长度误差相同或接近，它们经过的道路边顺序、道路边集合，甚至对应匹配点的位置偏移，仍然可能存在明显区别。也就是说，路径总长度看起来一致，并不意味着地图匹配结果在结构上也完全一致。因此，如果希望更细致地比较 HMM 与 trendHMM 的差异，仅依赖相对路径长度误差显然是不够的。
+        </p>
+        <p>
+          基于这一点，后续实验进一步引入了更细粒度的补充指标，包括边序列一致率、边集合重合率以及匹配点平均偏移距离。它们分别从路径顺序、路径组成和点级空间偏移三个层面，对地图匹配结果进行更具体的刻画，从而弥补原始指标在细节区分能力上的不足。
+        </p>
+        <p>
+          尽管如此，相对路径长度误差仍然有保留的必要。因为它能够从整体尺度上反映匹配路径与参考路径之间的偏离程度，计算方式也比较直接，便于作为一个基础性指标与后续细粒度指标相互补充。换句话说，它不再适合作为唯一主指标，但仍然可以作为结果分析中的一个总体参考量。
+        </p>
+
+        <h3>5.2 改进指标</h3>
+        <p>
+          在保留相对路径长度误差作为总体参考指标的基础上，本项目进一步引入了三类更细粒度的补充指标，分别是边序列一致率、边集合重合率以及匹配点平均偏移距离。之所以增加这些指标，是因为地图匹配结果的差异并不一定都会直接体现在“路径总长度”上。对于真实轨迹实验而言，尤其是在局部路网、短轨迹或部分场景路径长度接近的情况下，仅从总长度出发，往往难以看清两种方法在匹配结构上的真实区别。因此，有必要从更细的层面去描述地图匹配结果本身。
+        </p>
+        <p>
+          第一类指标是边序列一致率。它关注的是实验结果与参考结果在道路边序列上的逐点对应关系，也就是比较两条匹配路径在相同位置上经过的道路边是否一致。这个指标能够反映路径顺序层面的差别，因此适合用来观察两种方法在状态转移判断上的稳定性。如果某种方法虽然最终路径长度接近参考结果，但在边的先后顺序上已经发生明显偏离，那么边序列一致率通常会首先体现出这种差别。
+        </p>
+        <p>
+          第二类指标是边集合重合率。与边序列一致率不同，这一指标不再强调顺序，而是只关心实验结果与参考结果最终经过了哪些道路边。它能够反映两条路径在整体组成上的相似程度，因此适合判断算法是否至少选择了相近的道路范围。对于一些轨迹点较稀疏、局部顺序容易受扰动的场景，这一指标可以补充说明：即使路径顺序不完全一致，两种方法是否仍然落在了大体相同的道路结构上。
+        </p>
+        <p>
+          第三类指标是匹配点平均偏移距离。该指标直接比较实验结果与参考结果中对应匹配点之间的地理距离，用来衡量点级空间偏移的大小。相比前两个指标，它更加关注具体空间位置上的误差，因此能够补充揭示“道路选得对不对之外，点落得准不准”的问题。在噪声实验和部分真实数据实验中，这一指标尤其重要，因为即使两种方法经过的道路边集合相近，匹配点在道路上的具体投影位置也仍然可能存在明显差别。
+        </p>
+        <p>
+          通过将这三类指标与原有的相对路径长度误差结合起来，本项目的评价方式就不再只停留在单一的整体长度比较上，而是能够同时从总体偏差、路径结构和点级空间误差三个层面分析实验结果。这样一来，后续实验不仅可以判断 HMM 与 trendHMM 谁更接近参考结果，也能够进一步说明这种差异究竟体现在哪一个层面上，从而使结果分析更加完整。
+        </p>
+        <div class="note">
+          评价指标的调整是本项目的重要改进之一。它表明，在真实短轨迹和局部路网条件下，仅使用路径总长度并不足以揭示算法差异，需要从边序列和点级偏移两个层面进行更细粒度分析。
+        </div>
+      </div>
+    </section>
+
+    <section id="result">
+      <div class="card">
+        <h2>六、实验结果与分析</h2>
+
+        <h3>6.1 模拟数据实验结果</h3>
+        <p>
+          在模拟数据实验中，轨迹路径和道路网络都是预先设定的，因此这一部分结果主要用于检验整个地图匹配流程是否能够正常运行。从结果现象来看，程序能够完成候选边搜索、发射概率计算、转移概率建模以及 Viterbi 最优路径求解，并输出对应的匹配结果与可视化文件，说明本项目的基础实现链条已经能够稳定工作。
+        </p>
+        <div class="figure">
+          <p><strong>模拟数据地图匹配效果图</strong></p>
+          <div class="svg-flow-wrap">
+<svg viewBox="0 0 780 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="模拟数据地图匹配效果图">
+  <rect width="780" height="640" fill="#f8fbff"/>
+  <rect x="86" y="34" width="650" height="560" rx="14" fill="#ffffff" stroke="#d9e2f1" stroke-width="1.5"/>
+  <polyline points="699.9,330.7 693.4,338.5 692.0,341.2 691.1,343.4 690.9,345.2 691.1,347.7 691.6,349.8 692.1,350.9 693.4,352.4 697.6,354.5 708.8,358.5 723.5,363.3 710.5,458.3 702.5,457.5 692.2,457.9 682.5,459.3 669.9,462.3 637.3,473.9 626.9,477.2 617.9,479.6 568.6,490.2" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="705.2,539.4 633.9,557.5 581.8,571.0 570.9,574.2" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="677.6,418.8 680.3,416.6 682.3,414.0 682.9,412.4 683.0,411.1 682.7,409.7 681.1,407.8 679.3,406.3 672.8,401.7 659.5,394.0 643.4,386.9 626.0,380.8 604.5,374.9 586.1,370.9 574.9,368.9 559.6,366.4 542.1,364.5 518.5,362.6 491.1,360.3 467.0,358.5 440.8,356.9 414.5,356.2 394.5,355.7 373.1,355.8 350.7,356.7 297.7,363.3 258.0,368.0 225.0,371.0 205.0,371.9 178.1,371.6 168.9,371.2 156.2,370.3 144.0,368.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="125.4,285.2 151.1,282.9 155.4,282.5 179.3,281.3 190.1,280.9 199.7,280.8 205.0,281.0 208.0,281.1 215.6,281.6 224.8,282.7 235.0,284.2 246.3,286.4 254.2,288.6 264.5,292.9 282.4,299.8 287.5,301.4 293.7,302.9 300.0,303.7 306.5,304.2 312.0,304.3 320.9,303.4 377.0,296.9 380.5,296.5 396.4,294.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="340.4,592.1 350.4,585.4 359.7,579.9 379.2,571.3 391.3,566.5 400.1,563.5 411.2,560.6 425.6,556.7 451.8,550.4 464.3,547.7 469.3,546.3 472.9,545.1 476.2,543.2 493.2,533.1 503.5,526.4 533.9,507.7 568.6,490.2 586.4,481.5 599.1,474.9 613.7,467.5 620.9,463.5 628.3,458.4 641.8,447.9 654.3,437.9 664.2,429.8 672.0,423.4 677.6,418.8" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="396.4,294.3 401.8,286.2 407.4,278.8 408.6,276.8 409.8,273.7 410.4,271.2 410.4,269.0 408.6,253.2 407.1,244.6 405.8,240.2 404.4,235.3 401.3,230.6 399.3,227.1 393.5,219.7 385.7,209.8 377.4,201.2 375.1,198.1 372.9,195.2 371.3,192.0 370.1,188.3 369.4,182.6 368.5,173.8 368.1,164.5 365.5,116.6 364.4,114.3 362.9,112.9 359.8,111.2 355.1,109.6 345.6,107.9 303.9,101.9 296.0,100.8" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="581.8,571.0 578.3,566.2 567.0,550.5" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="560.2,541.1 548.6,524.7 542.6,517.1 533.9,507.7" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="567.0,550.5 464.7,578.2 453.0,582.1" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="731.8,555.5 705.2,539.4" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="306.8,580.4 138.4,592.4" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="97.2,536.1 116.3,535.0 121.1,534.7 142.2,533.2 157.4,532.8 176.3,532.7 200.7,532.4 211.7,532.1 231.5,531.6 248.2,530.2 265.5,528.1 304.7,521.1 357.3,511.5 367.7,509.5 384.7,506.3 426.4,497.5 447.5,492.6 472.4,485.3 491.9,479.6 508.8,474.2 513.5,473.0 527.8,469.4 549.9,464.4 569.2,460.8 571.9,460.0 587.2,455.6 600.9,450.1 612.6,445.0 628.1,437.8 649.7,430.3 672.0,423.4" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="730.7,470.6 723.2,471.9 716.8,473.8 698.8,480.7 663.8,492.6 628.0,503.3 594.7,512.8 548.6,524.7 476.2,543.2" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="716.9,231.1 712.8,227.5 709.2,224.5 703.7,221.5 700.3,220.0 696.2,218.8 689.4,217.3 674.2,215.1 661.7,214.0 650.1,213.3 626.7,212.8 582.2,213.4 571.5,213.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="368.1,164.5 435.5,162.2 489.5,160.3 493.5,160.2 496.3,160.4 498.7,160.8 501.2,161.5 502.9,162.5 503.9,163.6 504.6,165.0 505.3,167.2 508.0,182.0 576.5,178.6 596.1,177.7 601.0,176.9 605.4,175.3 608.4,173.1 610.5,170.9 611.3,167.8 611.2,164.6 592.8,110.5 590.0,104.7 588.4,102.5 586.8,101.0 584.4,99.9 581.5,99.0 577.6,98.7 571.0,98.8 436.8,106.5 424.9,108.3 394.1,112.6 365.5,116.6" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="269.7,48.3 142.5,67.2 139.9,67.7 138.1,68.4 137.1,69.5 136.9,70.9 144.8,117.4 145.7,123.5 153.6,168.7 154.5,171.5 156.1,173.5 158.2,175.4 160.7,176.9 164.3,178.5 167.8,179.7 174.5,181.4 179.5,182.4 187.7,183.3 197.2,183.6 246.8,180.6 351.2,175.0 368.5,173.8" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="562.2,35.9 565.6,42.6 568.4,46.5 571.5,51.1 591.9,75.6 598.1,82.7 604.0,90.3 609.4,97.6 614.4,105.1 621.3,117.0 651.4,171.9 655.9,177.5 659.9,181.4 663.9,184.8 672.1,191.7 709.6,217.8 714.8,220.8 719.8,223.4 727.9,227.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="716.6,589.9 703.5,583.5 683.4,574.5 678.6,572.7 663.3,566.9 633.9,557.5" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="145.7,123.5 235.3,118.6 299.3,115.1" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="319.5,242.1 326.3,241.7 386.4,238.3 399.3,227.1" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="568.8,36.5 571.2,40.8 574.0,45.1 598.1,74.3 603.9,82.4 627.6,115.9 643.3,140.6 660.1,168.1 664.9,174.2 670.6,180.0 681.3,189.8 717.4,214.8 722.6,217.6 734.3,223.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="410.4,269.0 400.1,269.6" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="419.6,293.0 458.7,293.2 490.9,292.6 552.1,291.1 594.5,289.9 595.6,293.5 600.7,304.1 602.9,306.8 606.2,309.3 611.2,311.8 617.0,313.5 623.3,314.6 631.8,315.1 643.4,315.4 651.8,316.0 658.7,316.8 667.0,318.9 686.1,325.6 699.9,330.7 717.6,335.7" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="562.7,111.8 592.8,110.5" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="400.1,269.6 391.5,270.1" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="548.7,214.8 543.2,215.0 536.1,215.2" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="561.5,214.3 548.7,214.8" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="493.2,533.1 468.7,511.2 447.5,492.6" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="672.8,401.7 669.1,403.0 599.4,420.7 548.0,433.2 498.1,448.1 432.3,462.2 402.8,467.0 330.6,479.2" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="426.4,497.5 421.3,490.9 402.8,467.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="693.2,244.6 691.2,243.9 686.9,243.5 681.8,243.8 646.9,245.9 645.7,242.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="408.6,253.2 479.5,249.5 499.6,248.3 559.3,245.5 582.8,244.6 587.4,244.4" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="587.4,244.4 590.4,264.0 594.5,289.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="595.6,293.5 641.6,289.3 652.1,288.3 663.4,287.2 713.4,282.6" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="254.2,288.6 251.9,270.4 250.0,264.3 247.1,261.3 243.8,259.6 239.2,257.5 233.1,255.6 228.2,254.6 221.4,253.4 213.2,252.8 204.4,252.5 195.0,252.4 186.2,253.0 180.9,254.1 175.5,255.8 162.8,262.4" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="488.5,267.9 489.0,274.2" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="477.8,268.3 487.4,267.2" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="490.9,292.6 489.0,274.2" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="410.4,271.2 477.8,268.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="479.5,249.5 487.4,267.2 487.9,267.6 488.5,267.9 489.3,268.0 492.2,268.1 504.6,267.6 507.0,267.5 534.2,266.3 548.3,265.7 565.1,265.0 590.4,264.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="370.1,188.3 416.5,187.7 452.4,187.4 509.2,185.5 508.0,182.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="377.4,201.2 315.1,204.1" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="282.1,260.0 250.0,264.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="291.8,243.8 319.5,242.1" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="151.1,282.9 162.8,262.4 166.0,255.8 171.0,247.8 174.7,243.0 179.0,239.7 184.1,237.0 190.2,234.5 197.7,232.4 206.7,230.9 222.6,229.4 252.1,228.1 265.6,228.0 272.4,228.6 278.1,229.7 281.9,230.9 284.9,232.4 287.6,234.2 289.4,235.9 290.7,237.7 291.5,240.2 291.8,243.8 292.0,253.4 292.1,258.6 282.1,260.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="144.9,338.1 176.4,336.4 179.8,333.7 185.2,328.1 182.7,318.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="396.4,294.3 408.1,293.4 419.6,293.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="567.0,550.5 560.2,541.1" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="698.8,480.7 730.7,487.5" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="299.0,484.5 255.9,490.8 239.2,497.4 210.8,512.7" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="672.0,423.4 677.6,418.8" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="570.9,574.2 575.3,578.6 582.7,586.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="653.7,490.0 659.3,488.5 663.8,492.6" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="542.6,517.1 596.5,505.1 617.7,499.6 653.7,490.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="359.7,579.9 542.0,532.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="401.8,286.2 408.1,293.4" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="394.1,112.6 392.3,96.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="708.0,248.2 700.8,243.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="693.7,238.4 700.8,243.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="645.7,242.0 620.2,243.3 587.4,244.4" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="645.7,242.0 693.7,238.4 716.9,231.1 722.5,229.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="565.3,266.5 566.3,273.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="565.1,265.0 565.3,266.5" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="489.0,274.2 505.6,273.9 509.5,273.7 533.7,272.6" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="504.6,267.6 505.6,273.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="551.6,288.3 548.3,265.7" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="552.1,291.1 551.6,288.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="534.2,266.3 533.7,263.7 532.2,254.2" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="345.6,107.9 370.4,65.6 375.0,60.2 379.6,56.1 386.7,52.0 402.9,46.6 422.5,41.9 439.5,39.4 460.8,38.3 529.1,38.8" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="385.7,209.8 396.5,208.9 396.9,208.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="404.4,235.3 416.6,235.3 417.5,247.1 456.5,246.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="696.6,319.4 699.9,317.5" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="658.7,316.8 673.9,307.8 696.6,319.4 686.1,325.6" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="725.6,285.2 730.2,287.9 722.1,293.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="663.4,287.2 663.2,284.9 660.5,267.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="685.0,266.1 687.7,266.3 689.4,266.6 691.1,267.4 713.4,280.2 713.4,282.6" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="682.3,414.0 712.8,414.7" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="709.3,385.9 723.5,363.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="683.0,411.1 697.2,403.4 709.3,385.9 702.6,381.9 695.4,378.7 686.2,375.1 648.6,365.1 611.5,356.0 565.2,346.1 499.9,331.5 491.8,328.5 486.3,325.1 480.8,321.5 466.7,311.0 462.7,309.4 457.4,308.2 451.9,307.8 419.0,308.1 414.5,307.7 402.1,306.2 391.6,304.4 386.1,302.6 377.0,296.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="195.2,449.3 187.8,430.8 183.6,415.8 180.7,400.6 178.7,384.4 178.1,371.6" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="100.2,457.6 105.6,472.1 135.2,484.5 164.0,497.6 210.8,512.7 209.2,516.7 211.7,532.1 228.4,554.8" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="357.3,511.5 343.2,504.3 331.3,498.1 306.3,490.4 299.0,484.5 270.9,468.3 216.5,459.1 180.4,450.6" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="100.2,457.6 148.1,453.4 180.4,450.6 195.2,449.3 221.6,447.0 293.2,439.6 358.1,431.1 376.6,432.3 394.5,428.2 429.1,420.5 501.9,411.3 589.2,407.5 640.0,406.6 669.1,403.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="116.3,535.0 128.6,544.1 134.8,551.5 138.3,560.0 139.0,564.3 140.4,572.8 140.3,580.4 138.4,592.4" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="321.7,540.4 307.0,541.1 278.7,544.3 270.5,547.0 264.8,550.5 239.0,554.4 228.4,554.8 205.2,559.5 182.2,561.3 160.9,563.2 139.0,564.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="306.8,580.4 312.6,562.8 321.7,540.4" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="414.5,356.2 416.7,327.2 419.0,308.1" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="330.6,479.2 299.0,484.5" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="562.9,451.9 571.9,460.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="465.7,478.4 472.4,485.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="507.0,466.0 513.5,473.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="599.4,420.7 588.7,437.8 584.1,446.2 562.9,451.9 556.4,453.7 538.8,456.2 507.0,466.0 491.2,470.8 465.7,478.4 459.9,480.2 436.8,487.1 421.3,490.9 390.4,497.3 373.1,495.2 357.5,497.4 343.2,504.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="400.1,563.5 390.4,547.8 379.7,528.4 371.8,516.2 367.7,509.5" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="620.9,463.5 595.9,467.1 560.4,478.0 518.5,491.4 468.7,511.2 434.3,522.2 379.7,528.4" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="321.7,540.4 355.5,533.8 379.7,528.4" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="321.9,42.3 335.4,36.2 337.9,35.7 340.6,35.9 346.1,37.1" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="279.3,37.7 291.3,57.2 293.7,59.1 297.0,60.7 300.8,62.0 305.8,62.9 313.8,64.1 320.8,64.2 324.9,63.8 329.8,62.7 333.9,61.3 336.3,59.7 338.0,57.6 342.3,50.0 348.2,40.2 349.5,37.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="264.1,39.9 279.3,37.7 288.6,39.7" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="288.6,39.7 308.6,44.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="308.6,44.3 314.1,44.0 318.3,43.3 321.9,42.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="346.1,37.1 349.5,37.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="238.0,134.9 235.3,118.6 231.4,95.4" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="296.0,100.8 278.1,62.4 269.7,48.3 264.1,39.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="299.3,115.1 303.9,101.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="245.0,168.7 246.8,180.6" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="434.3,153.9 435.5,162.2" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="143.4,365.4 178.0,367.5 204.4,367.9 223.7,367.2 258.6,364.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="178.0,367.5 178.1,369.2 178.1,371.6" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="326.3,241.7 326.9,244.6 328.1,251.2 314.3,252.1 294.5,253.2 292.0,253.4" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="314.3,252.1 316.5,263.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="386.4,238.3 386.9,241.1" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="641.6,289.3 641.2,285.8 639.3,273.6 639.5,272.0 640.0,270.7 640.8,269.8 642.1,269.0 643.7,268.3 646.8,267.7" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="646.8,267.7 660.5,267.0 685.0,266.1" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="713.4,282.6 717.9,282.7 720.4,283.1 725.6,285.2" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="533.7,272.6 533.9,274.4" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="509.5,273.7 509.7,275.7" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="507.0,267.5 506.8,265.0 506.5,261.5" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="564.3,258.5 564.8,262.4 565.1,265.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="413.4,219.1 393.5,219.7" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="416.4,183.4 416.5,187.7" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="413.4,219.1 412.7,229.4 401.3,230.6" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="536.1,215.2 508.6,216.1 453.6,217.9 413.4,219.1" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="582.4,240.4 582.8,244.6" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="576.5,178.6 582.2,213.4" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="571.5,213.9 561.5,214.3" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="452.4,187.4 453.2,208.5 453.6,217.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="453.2,208.5 500.5,206.7 541.9,205.1 543.2,215.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="499.7,200.4 500.5,206.7 501.2,211.3 502.5,213.1 508.6,216.1" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="202.0,265.7 205.0,281.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="652.1,288.3 655.9,300.0 623.6,303.2" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="678.6,572.7 685.6,569.8 691.2,568.5 698.0,567.5 704.7,567.1 712.0,566.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="724.3,585.2 716.6,589.9" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="673.5,579.5 678.7,577.4 683.4,574.5" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="582.7,586.3 647.0,569.7" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="311.4,585.2 325.3,581.0 345.0,575.3 339.2,569.3 319.6,575.0 325.3,581.0" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="311.4,585.2 306.8,580.4" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="714.8,220.8 722.6,217.6" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="717.4,214.8 709.6,217.8" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+<polyline points="621.3,117.0 627.6,115.9 632.8,115.0 665.9,108.8 697.4,151.5 701.8,155.7" fill="none" stroke="#d5deea" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+  <polyline points="157.1,493.5 169.1,483.3 191.8,469.2 208.7,445.1 253.0,440.8 250.7,427.3 229.3,409.9 260.4,406.9 282.0,383.7 298.8,367.1 328.2,354.9 343.1,348.6 379.6,330.7 387.5,314.7 377.9,307.3 403.3,291.7 415.7,273.4 425.4,263.2 464.0,256.5 480.5,248.4 485.6,232.3 528.8,209.7 511.4,190.1 530.5,197.0 557.0,169.3 584.3,175.5 607.4,148.8 603.8,135.1 631.4,128.0 656.8,95.2" fill="none" stroke="#ef4444" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.96"/>
+  <polyline points="157.1,532.8 176.2,532.7 211.7,532.2 205.3,371.9 231.7,370.4 258.0,368.0 223.8,371.1 248.9,368.8 275.3,366.0 297.5,363.4 330.0,359.3 350.7,356.7 379.6,355.7 380.4,296.5 374.1,297.3 405.9,291.0 415.3,271.0 410.1,263.8 462.9,250.4 480.7,249.4 479.8,249.5 508.9,185.4 510.1,181.8 528.0,180.9 558.6,179.4 596.2,177.7 606.1,149.0 601.3,135.4 628.0,128.6 664.9,109.0" fill="none" stroke="#2563eb" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.96"/>
+  <circle cx="157.1" cy="493.5" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="169.1" cy="483.3" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="191.8" cy="469.2" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="208.7" cy="445.1" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="253.0" cy="440.8" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="250.7" cy="427.3" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="229.3" cy="409.9" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="260.4" cy="406.9" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="282.0" cy="383.7" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="298.8" cy="367.1" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="328.2" cy="354.9" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="343.1" cy="348.6" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="379.6" cy="330.7" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="387.5" cy="314.7" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="377.9" cy="307.3" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="403.3" cy="291.7" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="415.7" cy="273.4" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="425.4" cy="263.2" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="464.0" cy="256.5" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="480.5" cy="248.4" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="485.6" cy="232.3" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="528.8" cy="209.7" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="511.4" cy="190.1" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="530.5" cy="197.0" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="557.0" cy="169.3" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="584.3" cy="175.5" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="607.4" cy="148.8" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="603.8" cy="135.1" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="631.4" cy="128.0" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+<circle cx="656.8" cy="95.2" r="3.1" fill="#ef4444" stroke="#ffffff" stroke-width="1"/>
+  <circle cx="157.1" cy="532.8" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="176.2" cy="532.7" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="211.7" cy="532.2" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="205.3" cy="371.9" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="231.7" cy="370.4" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="258.0" cy="368.0" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="223.8" cy="371.1" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="248.9" cy="368.8" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="275.3" cy="366.0" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="297.5" cy="363.4" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="330.0" cy="359.3" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="350.7" cy="356.7" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="379.6" cy="355.7" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="380.4" cy="296.5" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="374.1" cy="297.3" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="405.9" cy="291.0" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="415.3" cy="271.0" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="410.1" cy="263.8" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="462.9" cy="250.4" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="480.7" cy="249.4" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="479.8" cy="249.5" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="508.9" cy="185.4" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="510.1" cy="181.8" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="528.0" cy="180.9" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="558.6" cy="179.4" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="596.2" cy="177.7" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="606.1" cy="149.0" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="601.3" cy="135.4" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="628.0" cy="128.6" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+<circle cx="664.9" cy="109.0" r="3.1" fill="#2563eb" stroke="#ffffff" stroke-width="1"/>
+  <rect x="104" y="54" width="168" height="64" rx="12" fill="#ffffff" stroke="#d9e2f1" stroke-width="1.2" opacity="0.98"/>
+  <line x1="122" y1="76" x2="154" y2="76" stroke="#ef4444" stroke-width="3.2" stroke-linecap="round"/>
+  <text x="164" y="81" font-size="15" fill="#334155" font-family="Arial, Helvetica, sans-serif">Original GPS</text>
+  <line x1="122" y1="100" x2="154" y2="100" stroke="#2563eb" stroke-width="3.4" stroke-linecap="round"/>
+  <text x="164" y="105" font-size="15" fill="#334155" font-family="Arial, Helvetica, sans-serif">Matched Result</text>
+</svg>
+          </div>
+          <div class="caption">红色折线表示原始 GPS 轨迹，蓝色折线表示地图匹配后的结果；该图用于展示模拟轨迹在局部道路网络上的匹配效果。</div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>评价项</th>
+              <th>结果</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>原始轨迹点数</td>
+              <td>30</td>
+              <td>模拟轨迹输入共包含 30 个 GPS 点。</td>
+            </tr>
+            <tr>
+              <td>输出匹配点数</td>
+              <td>30</td>
+              <td>每个观测点都生成了对应的匹配结果，流程能够完整输出。</td>
+            </tr>
+            <tr>
+              <td>匹配边数量</td>
+              <td>22</td>
+              <td>匹配结果最终分布在 22 条道路边上，能够恢复出连续路径结构。</td>
+            </tr>
+            <tr>
+              <td>平均 GPS 到道路距离</td>
+              <td>31.30 m</td>
+              <td>从整体上看，匹配结果已经能够把原始轨迹吸附到邻近道路上。</td>
+            </tr>
+            <tr>
+              <td>最大 GPS 到道路距离</td>
+              <td>106.16 m</td>
+              <td>局部点位仍存在较大偏移，说明模拟轨迹中个别扰动点对匹配结果影响较明显。</td>
+            </tr>
+            <tr>
+              <td>总体评价</td>
+              <td>基础流程有效</td>
+              <td>匹配结果整体跟随原始轨迹走向，可用于验证候选边搜索、概率计算与最优路径求解流程。</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          进一步看，HMM 与 trendHMM 在模拟轨迹场景下都能够较好地恢复预设路径的整体走向，说明两种方法在较理想、可控的输入条件下都具备基本的地图匹配能力。由于模拟轨迹本身噪声可控、路网歧义相对有限，这一实验更适合作为算法正确性和流程完整性的基础验证，而不是直接用来判断两种方法在复杂真实环境中的优劣。
+        </p>
+        <p>
+          因此，模拟数据实验在本项目中的作用，主要是为后续真实动态轨迹实验和 GIOW 公开数据实验提供一个可靠起点。只有在模拟场景下先确认算法流程、结果输出和可视化过程都能够正常完成，后面的真实数据对比才具有进一步分析的意义。
+        </p>
+
+        <h3>6.2 真实动态轨迹：lj010617k_kinematic2.1.pos</h3>
+        <p>
+          在 <code>lj010617k_kinematic2.1.pos</code> 生成的真实动态轨迹实验中，输入数据来自 RTKLIB 在动态模式下解算得到的 GNSS 轨迹，因此这部分实验相比前面的模拟数据更接近实际定位场景。与模拟轨迹不同，这组数据不再由预设路径人工生成，而是包含了真实观测条件下的位置波动和测量误差，因此更适合用来检验 HMM 与 trendHMM 在真实局部道路环境中的匹配表现。
+        </p>
+        <p>
+          从当前实验结果来看，这组真实动态轨迹在原始轨迹、不同噪声水平以及不同降采样场景下，HMM 与 trendHMM 的结果都与参考结果保持一致。无论是边序列一致率、边集合重合率，还是匹配点平均偏移距离，这组数据上的结果都没有表现出明显差异。这说明在该实验场景中，轨迹本身相对稳定，局部道路网络的歧义也较弱，因此两种方法都能够恢复出相同的参考路径。
+        </p>
+        <p>
+          这一结果表明，对于点数较少、范围较局部、道路选择相对明确的真实动态轨迹，经典 HMM 已经能够完成较稳定的地图匹配，而 trendHMM 在这一场景下并没有额外体现出明显优势。换句话说，这组实验更能说明两种方法在简单真实场景中都具备可用性，但还不足以体现趋势约束在复杂环境下的改进效果。
+        </p>
+        <p>
+          因此，这部分真实动态轨迹实验在本项目中的意义，主要是作为“从模拟验证过渡到真实数据验证”的中间环节。一方面，它说明前面在模拟场景中验证过的地图匹配流程可以顺利迁移到真实 GNSS 数据上；另一方面，它也为后续更长时间跨度、更多扰动条件下的 GIOW 公开数据实验提供了对照基础。
+        </p>
+
+        <h3>6.3 武汉大学公开数据：GIOW-release</h3>
+        <p>
+          在 GIOW-release 实验中，本项目使用的是基于完整时间窗生成的 1 秒降采样轨迹，共包含 4312 个轨迹点。与前面的真实动态轨迹相比，这组数据时间跨度更长、轨迹结构更完整，因此更适合观察 HMM 与 trendHMM 在原始轨迹、噪声扰动以及不同降采样条件下的表现差异。从当前结果看，在原始轨迹、无噪声场景以及大多数降采样场景中，trendHMM 都更接近参考结果：它不仅在边集合重合率上保持更高一致性，而且在相对路径长度误差和部分新指标上也普遍优于 HMM。
+        </p>
+        <div class="figure">
+          <p><strong>GIOW 噪声实验结果图</strong></p>
+          <div class="svg-flow-wrap">
+<svg viewBox="0 0 920 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="GIOW Noise Experiments">
+<rect width="920" height="430" fill="#f8fbff"/>
+<text x="460.0" y="38" text-anchor="middle" font-size="24" font-weight="700" fill="#1f2937" font-family="Arial, Helvetica, sans-serif">GIOW Noise Experiments</text>
+<rect x="378.0" y="58" width="164" height="54" rx="12" fill="#ffffff" stroke="#d9e2f1" stroke-width="1.2"/>
+<line x1="394.0" y1="77" x2="424.0" y2="77" stroke="#ef4444" stroke-width="4" stroke-linecap="round"/>
+<text x="434.0" y="82" font-size="14" fill="#334155" font-family="Arial, Helvetica, sans-serif">HMM</text>
+<line x1="394.0" y1="97" x2="424.0" y2="97" stroke="#2563eb" stroke-width="4" stroke-linecap="round"/>
+<text x="434.0" y="102" font-size="14" fill="#334155" font-family="Arial, Helvetica, sans-serif">trendHMM</text>
+<rect x="56" y="120" width="400" height="220" rx="16" fill="#ffffff" stroke="#d9e2f1" stroke-width="1.4"/>
+<text x="256.0" y="102" text-anchor="middle" font-size="18" font-weight="700" fill="#1f2937" font-family="Arial, Helvetica, sans-serif">Relative Length Error</text>
+<line x1="98" y1="330.0" x2="438" y2="330.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="90" y="334.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">0.0</text>
+<line x1="98" y1="280.0" x2="438" y2="280.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="90" y="284.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">3.3</text>
+<line x1="98" y1="230.0" x2="438" y2="230.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="90" y="234.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">6.5</text>
+<line x1="98" y1="180.0" x2="438" y2="180.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="90" y="184.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">9.8</text>
+<line x1="98" y1="130.0" x2="438" y2="130.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="90" y="134.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">13.1</text>
+<line x1="98" y1="330" x2="438" y2="330" stroke="#94a3b8" stroke-width="1.2"/>
+<rect x="112.0" y="324.2" width="18" height="5.8" rx="4" fill="#ef4444" opacity="0.92"/>
+<rect x="138.0" y="330.0" width="18" height="0.0" rx="4" fill="#2563eb" opacity="0.92"/>
+<text x="134.0" y="354" text-anchor="middle" font-size="11" fill="#475569" font-family="Arial, Helvetica, sans-serif">raw</text>
+<rect x="194.0" y="287.3" width="18" height="42.7" rx="4" fill="#ef4444" opacity="0.92"/>
+<rect x="220.0" y="258.5" width="18" height="71.5" rx="4" fill="#2563eb" opacity="0.92"/>
+<text x="216.0" y="354" text-anchor="middle" font-size="11" fill="#475569" font-family="Arial, Helvetica, sans-serif">N5m</text>
+<rect x="276.0" y="260.7" width="18" height="69.3" rx="4" fill="#ef4444" opacity="0.92"/>
+<rect x="302.0" y="232.4" width="18" height="97.6" rx="4" fill="#2563eb" opacity="0.92"/>
+<text x="298.0" y="354" text-anchor="middle" font-size="11" fill="#475569" font-family="Arial, Helvetica, sans-serif">N10m</text>
+<rect x="358.0" y="174.1" width="18" height="155.9" rx="4" fill="#ef4444" opacity="0.92"/>
+<rect x="384.0" y="163.0" width="18" height="167.0" rx="4" fill="#2563eb" opacity="0.92"/>
+<text x="380.0" y="354" text-anchor="middle" font-size="11" fill="#475569" font-family="Arial, Helvetica, sans-serif">N20m</text>
+<rect x="496" y="120" width="400" height="220" rx="16" fill="#ffffff" stroke="#d9e2f1" stroke-width="1.4"/>
+<text x="696.0" y="102" text-anchor="middle" font-size="18" font-weight="700" fill="#1f2937" font-family="Arial, Helvetica, sans-serif">Exact Edge Sequence Ratio</text>
+<line x1="538" y1="330.0" x2="878" y2="330.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="530" y="334.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">0.0</text>
+<line x1="538" y1="280.0" x2="878" y2="280.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="530" y="284.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">0.3</text>
+<line x1="538" y1="230.0" x2="878" y2="230.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="530" y="234.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">0.6</text>
+<line x1="538" y1="180.0" x2="878" y2="180.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="530" y="184.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">0.9</text>
+<line x1="538" y1="130.0" x2="878" y2="130.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="530" y="134.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">1.1</text>
+<line x1="538" y1="330" x2="878" y2="330" stroke="#94a3b8" stroke-width="1.2"/>
+<rect x="552.0" y="241.8" width="18" height="88.2" rx="4" fill="#ef4444" opacity="0.92"/>
+<rect x="578.0" y="163.0" width="18" height="167.0" rx="4" fill="#2563eb" opacity="0.92"/>
+<text x="574.0" y="354" text-anchor="middle" font-size="11" fill="#475569" font-family="Arial, Helvetica, sans-serif">raw</text>
+<rect x="634.0" y="288.3" width="18" height="41.7" rx="4" fill="#ef4444" opacity="0.92"/>
+<rect x="660.0" y="273.1" width="18" height="56.9" rx="4" fill="#2563eb" opacity="0.92"/>
+<text x="656.0" y="354" text-anchor="middle" font-size="11" fill="#475569" font-family="Arial, Helvetica, sans-serif">N5m</text>
+<rect x="716.0" y="295.2" width="18" height="34.8" rx="4" fill="#ef4444" opacity="0.92"/>
+<rect x="742.0" y="286.6" width="18" height="43.4" rx="4" fill="#2563eb" opacity="0.92"/>
+<text x="738.0" y="354" text-anchor="middle" font-size="11" fill="#475569" font-family="Arial, Helvetica, sans-serif">N10m</text>
+<rect x="798.0" y="299.8" width="18" height="30.2" rx="4" fill="#ef4444" opacity="0.92"/>
+<rect x="824.0" y="293.4" width="18" height="36.6" rx="4" fill="#2563eb" opacity="0.92"/>
+<text x="820.0" y="354" text-anchor="middle" font-size="11" fill="#475569" font-family="Arial, Helvetica, sans-serif">N20m</text>
+</svg>
+          </div>
+          <div class="caption">左图比较原始轨迹与不同噪声场景下的相对路径长度误差，右图比较边序列一致率；从图中可以看出，在这组 GIOW 噪声实验中，trendHMM 在多数场景下更接近参考结果。</div>
+        </div>
+        <div class="figure">
+          <p><strong>GIOW 降采样实验结果图</strong></p>
+          <div class="svg-flow-wrap">
+<svg viewBox="0 0 920 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="GIOW Downsampling Experiments">
+<rect width="920" height="430" fill="#f8fbff"/>
+<text x="460.0" y="38" text-anchor="middle" font-size="24" font-weight="700" fill="#1f2937" font-family="Arial, Helvetica, sans-serif">GIOW Downsampling Experiments</text>
+<rect x="378.0" y="58" width="164" height="54" rx="12" fill="#ffffff" stroke="#d9e2f1" stroke-width="1.2"/>
+<line x1="394.0" y1="77" x2="424.0" y2="77" stroke="#ef4444" stroke-width="4" stroke-linecap="round"/>
+<text x="434.0" y="82" font-size="14" fill="#334155" font-family="Arial, Helvetica, sans-serif">HMM</text>
+<line x1="394.0" y1="97" x2="424.0" y2="97" stroke="#2563eb" stroke-width="4" stroke-linecap="round"/>
+<text x="434.0" y="102" font-size="14" fill="#334155" font-family="Arial, Helvetica, sans-serif">trendHMM</text>
+<rect x="56" y="120" width="400" height="220" rx="16" fill="#ffffff" stroke="#d9e2f1" stroke-width="1.4"/>
+<text x="256.0" y="102" text-anchor="middle" font-size="18" font-weight="700" fill="#1f2937" font-family="Arial, Helvetica, sans-serif">Relative Length Error</text>
+<line x1="98" y1="330.0" x2="438" y2="330.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="90" y="334.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">0.0</text>
+<line x1="98" y1="280.0" x2="438" y2="280.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="90" y="284.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">0.1</text>
+<line x1="98" y1="230.0" x2="438" y2="230.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="90" y="234.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">0.2</text>
+<line x1="98" y1="180.0" x2="438" y2="180.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="90" y="184.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">0.3</text>
+<line x1="98" y1="130.0" x2="438" y2="130.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="90" y="134.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">0.5</text>
+<line x1="98" y1="330" x2="438" y2="330" stroke="#94a3b8" stroke-width="1.2"/>
+<rect x="112.0" y="163.0" width="18" height="167.0" rx="4" fill="#ef4444" opacity="0.92"/>
+<rect x="138.0" y="330.0" width="18" height="0.0" rx="4" fill="#2563eb" opacity="0.92"/>
+<text x="134.0" y="354" text-anchor="middle" font-size="11" fill="#475569" font-family="Arial, Helvetica, sans-serif">S1</text>
+<rect x="194.0" y="192.7" width="18" height="137.3" rx="4" fill="#ef4444" opacity="0.92"/>
+<rect x="220.0" y="311.3" width="18" height="18.7" rx="4" fill="#2563eb" opacity="0.92"/>
+<text x="216.0" y="354" text-anchor="middle" font-size="11" fill="#475569" font-family="Arial, Helvetica, sans-serif">S2</text>
+<rect x="276.0" y="259.8" width="18" height="70.2" rx="4" fill="#ef4444" opacity="0.92"/>
+<rect x="302.0" y="322.4" width="18" height="7.6" rx="4" fill="#2563eb" opacity="0.92"/>
+<text x="298.0" y="354" text-anchor="middle" font-size="11" fill="#475569" font-family="Arial, Helvetica, sans-serif">S3</text>
+<rect x="358.0" y="215.1" width="18" height="114.9" rx="4" fill="#ef4444" opacity="0.92"/>
+<rect x="384.0" y="279.3" width="18" height="50.7" rx="4" fill="#2563eb" opacity="0.92"/>
+<text x="380.0" y="354" text-anchor="middle" font-size="11" fill="#475569" font-family="Arial, Helvetica, sans-serif">S5</text>
+<rect x="496" y="120" width="400" height="220" rx="16" fill="#ffffff" stroke="#d9e2f1" stroke-width="1.4"/>
+<text x="696.0" y="102" text-anchor="middle" font-size="18" font-weight="700" fill="#1f2937" font-family="Arial, Helvetica, sans-serif">Mean Matched Point Distance (m)</text>
+<line x1="538" y1="330.0" x2="878" y2="330.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="530" y="334.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">0.0</text>
+<line x1="538" y1="280.0" x2="878" y2="280.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="530" y="284.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">31.0</text>
+<line x1="538" y1="230.0" x2="878" y2="230.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="530" y="234.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">62.0</text>
+<line x1="538" y1="180.0" x2="878" y2="180.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="530" y="184.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">93.0</text>
+<line x1="538" y1="130.0" x2="878" y2="130.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="530" y="134.0" text-anchor="end" font-size="11" fill="#64748b" font-family="Arial, Helvetica, sans-serif">124.0</text>
+<line x1="538" y1="330" x2="878" y2="330" stroke="#94a3b8" stroke-width="1.2"/>
+<rect x="552.0" y="301.3" width="18" height="28.7" rx="4" fill="#ef4444" opacity="0.92"/>
+<rect x="578.0" y="330.0" width="18" height="0.0" rx="4" fill="#2563eb" opacity="0.92"/>
+<text x="574.0" y="354" text-anchor="middle" font-size="11" fill="#475569" font-family="Arial, Helvetica, sans-serif">S1</text>
+<rect x="634.0" y="178.5" width="18" height="151.5" rx="4" fill="#ef4444" opacity="0.92"/>
+<rect x="660.0" y="176.9" width="18" height="153.1" rx="4" fill="#2563eb" opacity="0.92"/>
+<text x="656.0" y="354" text-anchor="middle" font-size="11" fill="#475569" font-family="Arial, Helvetica, sans-serif">S2</text>
+<rect x="716.0" y="174.2" width="18" height="155.8" rx="4" fill="#ef4444" opacity="0.92"/>
+<rect x="742.0" y="174.9" width="18" height="155.1" rx="4" fill="#2563eb" opacity="0.92"/>
+<text x="738.0" y="354" text-anchor="middle" font-size="11" fill="#475569" font-family="Arial, Helvetica, sans-serif">S3</text>
+<rect x="798.0" y="163.0" width="18" height="167.0" rx="4" fill="#ef4444" opacity="0.92"/>
+<rect x="824.0" y="167.9" width="18" height="162.1" rx="4" fill="#2563eb" opacity="0.92"/>
+<text x="820.0" y="354" text-anchor="middle" font-size="11" fill="#475569" font-family="Arial, Helvetica, sans-serif">S5</text>
+</svg>
+          </div>
+          <div class="caption">左图比较不同降采样场景下的相对路径长度误差，右图比较平均匹配点距离；除了个别场景外，trendHMM 在大多数降采样实验中仍然更接近参考结果。</div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>场景</th>
+              <th>算法</th>
+              <th>相对路径长度误差</th>
+              <th>边序列一致率</th>
+              <th>边集合重合率</th>
+              <th>平均匹配点距离</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>raw</td>
+              <td>HMM</td>
+              <td>0.3963</td>
+              <td>0.5281</td>
+              <td>0.84</td>
+              <td>18.54 m</td>
+            </tr>
+            <tr>
+              <td>raw</td>
+              <td>trendHMM</td>
+              <td>0.0000</td>
+              <td>1.0000</td>
+              <td>1.00</td>
+              <td>0.00 m</td>
+            </tr>
+            <tr>
+              <td>noise_10m</td>
+              <td>HMM</td>
+              <td>4.7134</td>
+              <td>0.2083</td>
+              <td>0.96</td>
+              <td>24.48 m</td>
+            </tr>
+            <tr>
+              <td>noise_10m</td>
+              <td>trendHMM</td>
+              <td>6.6434</td>
+              <td>0.2597</td>
+              <td>1.00</td>
+              <td>25.32 m</td>
+            </tr>
+            <tr>
+              <td>noise_20m</td>
+              <td>HMM</td>
+              <td>10.6087</td>
+              <td>0.1809</td>
+              <td>0.96</td>
+              <td>34.49 m</td>
+            </tr>
+            <tr>
+              <td>noise_20m</td>
+              <td>trendHMM</td>
+              <td>11.3625</td>
+              <td>0.2189</td>
+              <td>1.00</td>
+              <td>34.49 m</td>
+            </tr>
+            <tr>
+              <td>step_2</td>
+              <td>HMM</td>
+              <td>0.3260</td>
+              <td>0.1252</td>
+              <td>0.88</td>
+              <td>97.83 m</td>
+            </tr>
+            <tr>
+              <td>step_2</td>
+              <td>trendHMM</td>
+              <td>0.0445</td>
+              <td>0.1122</td>
+              <td>1.00</td>
+              <td>98.91 m</td>
+            </tr>
+            <tr>
+              <td>step_5</td>
+              <td>HMM</td>
+              <td>0.2728</td>
+              <td>0.0904</td>
+              <td>0.84</td>
+              <td>107.84 m</td>
+            </tr>
+            <tr>
+              <td>step_5</td>
+              <td>trendHMM</td>
+              <td>0.1202</td>
+              <td>0.0985</td>
+              <td>0.92</td>
+              <td>104.73 m</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          进一步看，在噪声实验中，trendHMM 在 5 m、10 m 和 20 m 噪声条件下依然整体表现更稳。虽然个别指标上并不是所有场景都全面领先，例如在 10 m 噪声和 step_2 场景中，HMM 的某些局部指标仍然略好，但从总体趋势来看，trendHMM 在边序列一致率、边集合重合率以及整体路径误差控制上更有优势。这说明当轨迹规模增大、路径连续性信息更充分时，引入趋势约束能够在多数场景下帮助模型更稳定地恢复参考路径。不过，这组结果也提示我们，趋势约束的提升效果并不是绝对一致的，它仍然会受到噪声强度、采样密度以及具体轨迹形态的共同影响。
+        </p>
+      </div>
+    </section>
+
+    <section id="thoughts">
+      <div class="card">
+        <h2>七、总结与个人反思</h2>
+        <p>
+          本次《位置服务与实践》课程设计围绕地图匹配这一问题，完成了从数据预处理、路网构建、算法实现，到批量实验、指标评价和网页展示的完整实践流程。整个项目不是停留在单次程序运行或单组结果展示上，而是逐步形成了一套较完整的实验框架：先用模拟轨迹验证基础流程能否正常工作，再将实验扩展到真实动态轨迹和武汉大学公开数据，并在统一流程下对经典 HMM 与 trendHMM 进行比较分析。
+        </p>
+        <p>
+          从实验结果来看，经典 HMM 与 trendHMM 在不同数据条件下并没有表现出完全一致的差异规律。在模拟轨迹和部分简单真实场景中，两种方法都能够得到较稳定的匹配结果，trendHMM 的优势并不总是明显；而在时间跨度更长、轨迹结构更完整的 GIOW-release 实验中，趋势约束在多数场景下能够帮助模型更稳定地恢复参考路径，尤其在边集合重合率和整体路径误差控制方面表现得更突出。这说明算法改进的效果并不是脱离场景而独立存在的，而是会受到轨迹长度、采样密度、噪声水平以及局部路网结构等多种因素的共同影响。所以算法比较不能只看单一实验现象，而应放到多组条件下综合分析。
+        </p>
+        <p>
+          对我来说，本项目中最重要的收获之一，是逐步意识到评价指标设计本身也是实验研究的一部分。最初仅使用相对路径长度误差时，一些真实场景下几乎无法有效区分两种算法的差异；重新检查结果，进一步补充了边序列一致率、边集合重合率和匹配点平均偏移距离等指标，才使实验结果变得更加细致，也更具解释性。整体来看，这次实践让我对地图匹配这一方向建立了更完整的认识，也让我在真实数据处理、实验组织和结果分析方面积累了更直接的经验。
+        </p>
+      </div>
+    </section>
+    <section id="refs">
+      <div class="card">
+        <h2>八、参考文献</h2>
+        <ol>
+          <li>NEWSON P, KRUMM J. Hidden Markov map matching through noise and sparseness[C]//Proceedings of the 17th ACM SIGSPATIAL International Conference on Advances in Geographic Information Systems. Seattle, WA, USA: ACM, 2009: 336-343. <a href="./papers/References_1_Hidden%20Markov%20map%20matching%20through%20noise%20and%20sparseness.pdf" target="_blank" rel="noopener noreferrer">[PDF]</a></li>
+          <li>SONG H Y, LEE J H. A map matching algorithm based on modified hidden Markov model considering time series dependency over larger time span[J]. Heliyon, 2023, 9: e21368. DOI:10.1016/j.heliyon.2023.e21368. <a href="./papers/References_2_A%20map%20matching%20algorithm%20based%20on%20modified%20hidden%20Markov%20model%20considering%20time%20series%20dependency%20over%20larger%20time%20span.pdf" target="_blank" rel="noopener noreferrer">[PDF]</a></li>
+          <li>LOU Y, ZHANG C, ZHENG Y, et al. Map-matching for low-sampling-rate GPS trajectories[C]//Proceedings of the 17th ACM SIGSPATIAL International Conference on Advances in Geographic Information Systems. Seattle, WA, USA: ACM, 2009: 352-361. <a href="./papers/References_3_Map-matching%20for%20low-sampling-rate%20GPS%20trajectories.pdf" target="_blank" rel="noopener noreferrer">[PDF]</a></li>
+          <li>LI Y, FEI Y X, AN Y S, et al. Review on map matching technologies in intelligent transportation scenarios[J]. Journal of Traffic and Transportation Engineering, 2024, 24(5): 301-332. DOI:10.19818/j.cnki.1671-1637.2024.05.020. <a href="./papers/References_4_Review%20on%20map%20matching%20technologies%20in%20intelligent%20transportation%20scenarios.pdf" target="_blank" rel="noopener noreferrer">[PDF]</a></li>
+          <li>LI W, CHEN Y, WANG S, et al. A novel map matching method based on improved hidden Markov and conditional random fields model[J]. International Journal of Digital Earth, 2024, 17(1): 2328366. DOI:10.1080/17538947.2024.2328366. <a href="./papers/References_5_A%20Novel%20Map%20Matching%20Method%20Based%20on%20Improved%20Hidden%20Markov%20and%20Conditional%20Random%20Fields%20Model.pdf" target="_blank" rel="noopener noreferrer">[PDF]</a></li>
+          <li>ALKHAZRAJI H, KANAKIS T, AL-SHERBAZ A, et al. Enhancing map matching accuracy using backtracking technique[J]. International Journal of Applied Earth Observation and Geoinformation, 2024, 132: 103988. DOI:10.1016/j.jag.2024.103988. <a href="./papers/References_6_Enhancing%20map%20matching%20accuracy%20using%20backtracking%20technique.pdf" target="_blank" rel="noopener noreferrer">[PDF]</a></li>
+          <li>WAN Z, DODGE S. Medark: a map-matching error detection and rectification framework for vehicle trajectories[J]. International Journal of Geographical Information Science, 2025, 39(4): 872-899. DOI:10.1080/13658816.2024.2436482. <a href="./papers/References_7_Medark%20a%20map-matching%20error%20detection%20and%20rectification%20framework%20for%20vehicle%20trajectories.pdf" target="_blank" rel="noopener noreferrer">[PDF]</a></li>
+          <li>STIPANCIC J, SAUNIER N, NAVIDI N, et al. Evaluating map matching algorithms for smartphone GNSS data: matching vehicle trajectories to an urban road network[J]. Transportation Research Procedia, 2025, 82: 303-322. DOI:10.1016/j.trpro.2024.12.045. <a href="./papers/References_8_Evaluating%20map%20matching%20algorithms%20for%20smartphone%20GNSS%20data%20matching%20vehicle%20trajectories%20to%20an%20urban%20road%20network.pdf" target="_blank" rel="noopener noreferrer">[PDF]</a></li>
+        </ol>
+      </div>
+    </section>
+
+    <section>
+      <div class="card">
+        <p>
+          项目开源仓库链接：
+          <a href="https://github.com/ZnSO4-1/location_services_and_practices" target="_blank" rel="noopener noreferrer">
+            https://github.com/ZnSO4-1/location_services_and_practices
+          </a>
+        </p>
+        <div class="video-frame">
+          <video controls preload="metadata">
+            <source src="./videos/final_video_60s_cn_tts_subtitle_transition.mp4" type="video/mp4" />
+            抱歉，你的浏览器暂不支持 HTML5 视频播放。你可以直接访问
+            <a href="./videos/final_video_60s_cn_tts_subtitle_transition.mp4">视频文件链接</a>。
+          </video>
+          <div class="caption">项目演示视频：final_video_60s_cn_tts_subtitle_transition.mp4</div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
